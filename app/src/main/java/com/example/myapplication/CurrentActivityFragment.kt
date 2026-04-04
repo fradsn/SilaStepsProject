@@ -157,17 +157,41 @@ class CurrentActivityFragment : Fragment(), SmartRingBleManager.RingCallback {
         hasConnectedToDevice = false
         isConnecting = true
         updateConnectingUI()
-        bleManager.startScan()
-        Toast.makeText(requireContext(), "Ricerca ring in corso...", Toast.LENGTH_SHORT).show()
+
+        // Controlla prima tra i dispositivi già accoppiati
+        val bluetoothManager = requireContext()
+            .getSystemService(android.content.Context.BLUETOOTH_SERVICE)
+                as android.bluetooth.BluetoothManager
+        val adapter = bluetoothManager.adapter
+
+        val bondedRing = adapter?.bondedDevices?.firstOrNull { device ->
+            // Adatta il filtro al nome del tuo ring
+            device.name?.contains("ring", ignoreCase = true) == true ||
+                    device.name?.contains("R0", ignoreCase = true) == true
+        }
+
+        if (bondedRing != null) {
+            // Ring già accoppiato: connetti direttamente senza scan
+            hasConnectedToDevice = true
+            tvBleStatusLabel.text = "Riconnessione a ${bondedRing.name}..."
+            bleManager.connect(bondedRing)
+        } else {
+            // Ring non trovato tra i bonded: avvia la scansione normale
+            bleManager.startScan()
+            Toast.makeText(requireContext(), "Ricerca ring in corso...", Toast.LENGTH_SHORT).show()
+        }
     }
 
     @SuppressLint("MissingPermission")
     private fun disconnectRing() {
         isConnecting = false
         hasConnectedToDevice = false
-        bleManager.disconnect()
+        bleManager.stopScan()      // ferma la scansione BLE
+        bleManager.disconnect()    // chiude l'eventuale connessione GATT
+        setHeartDisconnectedUI()
     }
 
+    @SuppressLint("MissingPermission")
     override fun onConnected() {
         activity?.runOnUiThread {
             isConnected = true
@@ -183,7 +207,6 @@ class CurrentActivityFragment : Fragment(), SmartRingBleManager.RingCallback {
             }
         }
     }
-
     override fun onDisconnected() {
         activity?.runOnUiThread {
             isConnected = false
