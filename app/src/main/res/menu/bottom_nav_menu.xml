@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item android:title="Activity"
+        android:id="@+id/homeA"
+        android:icon="@drawable/running_run_svgrepo_com"/>
+
+    <item android:title="Statistics"
+        android:id="@+id/scheda"
+        android:icon="@drawable/chart_pipe_svgrepo_com"/>
+    <item android:title="Profile"
+        android:id="@+id/profilo"
+        android:icon="@drawable/user_hands_svgrepo_com"/>
+
+</menu>
