@@ -70,6 +70,10 @@
         <activity
             android:name=".ResetActivity"
             android:exported="false" />
+        <service
+            android:name=".BLE"
+            android:enabled="true"
+            android:exported="false" />
 
     </application>
 

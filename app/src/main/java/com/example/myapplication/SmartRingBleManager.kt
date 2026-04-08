@@ -5,9 +5,7 @@ import android.annotation.SuppressLint
 import android.bluetooth.*
 import android.bluetooth.le.*
 import android.content.Context
-import android.content.pm.PackageManager
 import androidx.annotation.RequiresPermission
-import androidx.core.app.ActivityCompat
 import java.util.UUID
 
 /**
@@ -92,10 +90,10 @@ class SmartRingBleManager(private val context: Context) {
     // ── Invio pacchetto (equivalente di _send_raw()) ──────────────────────────
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     private fun sendPacket(cmdId: Int, key: Int, payload: ByteArray = byteArrayOf()) {
-        val packet = SmartRingProtocol.buildPacket(cmdId, key, payload)
+        val packet = SmartRingProtocol.buildPacket(cmdId.toByte(), key.toByte(), payload)
         val char = gatt
-            ?.getService(UUID.fromString(SERVICE_UUID))
-            ?.getCharacteristic(UUID.fromString(CHAR_WRITE))
+            ?.getService(Constants.SERVICE_UUID)
+            ?.getCharacteristic(Constants.CHAR_COMMAND_CONTROL)
             ?: return
         char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
         char.value     = packet
@@ -183,7 +181,7 @@ class SmartRingBleManager(private val context: Context) {
                 val packetBytes = arr.copyOfRange(0, length)
                 repeat(length) { buffer.removeAt(0) }
 
-                val parsed = SmartRingProtocol.parsePacket(packetBytes) ?: continue
+                val parsed = SmartRing.parsePacket(packetBytes) ?: continue
                 routePacket(parsed)
             }
         }
@@ -193,7 +191,7 @@ class SmartRingBleManager(private val context: Context) {
          * Equivalente del routing in _notification_handler()
          */
         @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-        private fun routePacket(p: SmartRingProtocol.ParsedPacket) {
+        private fun routePacket(p: SmartRing.ParsedPacket) {
             when {
                 // Measurement complete — Cmd 0x04, Key 0x0E (come nel tuo Python)
                 p.cmdId == 0x04 && p.key == 0x0E -> {

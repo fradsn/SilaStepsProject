@@ -1,6 +1,6 @@
 package com.example.myapplication
 
-object SmartRingProtocol {
+object SmartRing {
 
     // Gli stessi UUID del tuo Python
     const val SERVICE_UUID         = "BE940000-7333-BE46-B7AE-689E71722BD5"
@@ -22,7 +22,7 @@ object SmartRingProtocol {
     }
 
     // Equivalente di build_packet()
-    fun buildPacket(cmdId: Int, key: Int, payload: ByteArray = byteArrayOf()): ByteArray {
+    fun buildPacket(cmdId: Byte, key: Byte, payload: ByteArray = byteArrayOf()): ByteArray {
         val length = 6 + payload.size
         val header = byteArrayOf(
             cmdId.toByte(),

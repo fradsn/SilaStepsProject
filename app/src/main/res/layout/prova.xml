@@ -90,7 +90,7 @@
                 android:layout_height="wrap_content"
                 android:padding="28dp">
 
-                <!-- Pulse rings (animated via code) -->
+                <!-- Pulse rings -->
                 <View
                     android:id="@+id/pulseRing3"
                     android:layout_width="160dp"
@@ -151,7 +151,7 @@
                     app:layout_constraintEnd_toEndOf="parent"
                     android:layout_marginTop="20dp" />
 
-                <!-- Confidence bar label -->
+                <!-- Confidence label -->
                 <TextView
                     android:id="@+id/tvConfidenceLabel"
                     android:layout_width="wrap_content"
@@ -174,7 +174,6 @@
                     app:layout_constraintTop_toTopOf="@id/tvConfidenceLabel"
                     app:layout_constraintEnd_toEndOf="parent" />
 
-                <!-- Confidence ProgressBar -->
                 <ProgressBar
                     android:id="@+id/progressConfidence"
                     style="@style/Widget.AppCompat.ProgressBar.Horizontal"
@@ -191,7 +190,7 @@
             </androidx.constraintlayout.widget.ConstraintLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- ============= STATS ROW ============= -->
+        <!-- ============= STATS ROW (durata, passi, kcal) ============= -->
         <LinearLayout
             android:id="@+id/statsRow"
             android:layout_width="0dp"
@@ -204,7 +203,7 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent">
 
-            <!-- Stat: Duration -->
+            <!-- Duration -->
             <androidx.cardview.widget.CardView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -231,7 +230,7 @@
                         android:id="@+id/tvDuration"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="4m 12s"
+                        android:text="0m 00s"
                         android:textColor="@color/white"
                         android:textSize="16sp"
                         android:textStyle="bold"
@@ -246,7 +245,7 @@
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 
-            <!-- Stat: Steps -->
+            <!-- Steps -->
             <androidx.cardview.widget.CardView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -273,7 +272,7 @@
                         android:id="@+id/tvSteps"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="342"
+                        android:text="0"
                         android:textColor="@color/white"
                         android:textSize="16sp"
                         android:textStyle="bold"
@@ -288,7 +287,7 @@
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 
-            <!-- Stat: Calories -->
+            <!-- Calories -->
             <androidx.cardview.widget.CardView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -314,7 +313,7 @@
                         android:id="@+id/tvCalories"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="18"
+                        android:text="0"
                         android:textColor="@color/white"
                         android:textSize="16sp"
                         android:textStyle="bold"
@@ -331,9 +330,9 @@
 
         </LinearLayout>
 
-        <!-- ============= HEART RATE BLE CARD ============= -->
+        <!-- ============= OXYGEN & BP CARD ============= -->
         <androidx.cardview.widget.CardView
-            android:id="@+id/cardHeartRate"
+            android:id="@+id/cardHealthExtras"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             app:cardCornerRadius="20dp"
@@ -341,7 +340,7 @@
             app:cardElevation="8dp"
             android:layout_marginHorizontal="24dp"
             android:layout_marginTop="16dp"
-            app:layout_constraintTop_toBottomOf="@id/statsRow"
+            app:layout_constraintTop_toBottomOf="@id/cardHeartRate"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent">
 
@@ -352,7 +351,115 @@
                 android:paddingTop="18dp"
                 android:paddingBottom="18dp">
 
-                <!-- Titolo card -->
+                <TextView
+                    android:id="@+id/tvHealthTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Parametri aggiuntivi"
+                    android:textColor="@color/white"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.03"
+                    app:layout_constraintTop_toTopOf="parent"
+                    app:layout_constraintStart_toStartOf="parent" />
+
+                <!-- Riga SpO2 -->
+                <TextView
+                    android:id="@+id/tvSpO2Label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Ossigeno"
+                    android:textColor="@color/text_muted"
+                    android:textSize="12sp"
+                    android:layout_marginTop="12dp"
+                    app:layout_constraintTop_toBottomOf="@id/tvHealthTitle"
+                    app:layout_constraintStart_toStartOf="parent" />
+
+                <TextView
+                    android:id="@+id/tvSpO2Value"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="-- %"
+                    android:textColor="@color/accent_teal"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    app:layout_constraintTop_toTopOf="@id/tvSpO2Label"
+                    app:layout_constraintEnd_toStartOf="@id/btnStartSpO2"
+                    android:layout_marginEnd="8dp" />
+
+                <Button
+                    android:id="@+id/btnStartSpO2"
+                    android:layout_width="wrap_content"
+                    android:layout_height="30dp"
+                    android:text="Avvia SpO₂"
+                    android:textSize="11sp"
+                    android:textColor="@color/white"
+                    android:backgroundTint="@color/accent_teal"
+                    android:paddingHorizontal="10dp"
+                    app:layout_constraintTop_toTopOf="@id/tvSpO2Label"
+                    app:layout_constraintEnd_toEndOf="parent" />
+
+                <!-- Riga BP -->
+                <TextView
+                    android:id="@+id/tvBpLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Pressione"
+                    android:textColor="@color/text_muted"
+                    android:textSize="12sp"
+                    android:layout_marginTop="10dp"
+                    app:layout_constraintTop_toBottomOf="@id/tvSpO2Label"
+                    app:layout_constraintStart_toStartOf="parent" />
+
+                <TextView
+                    android:id="@+id/tvBpValue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="-- / --"
+                    android:textColor="@color/accent_orange"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    app:layout_constraintTop_toTopOf="@id/tvBpLabel"
+                    app:layout_constraintEnd_toStartOf="@id/btnStartBP"
+                    android:layout_marginEnd="8dp" />
+
+                <Button
+                    android:id="@+id/btnStartBP"
+                    android:layout_width="wrap_content"
+                    android:layout_height="30dp"
+                    android:text="Avvia BP"
+                    android:textSize="11sp"
+                    android:textColor="@color/white"
+                    android:backgroundTint="@color/accent_teal"
+                    android:paddingHorizontal="10dp"
+                    app:layout_constraintTop_toTopOf="@id/tvBpLabel"
+                    app:layout_constraintEnd_toEndOf="parent" />
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- ============= HEART RATE BLE CARD ============= -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/cardHeartRate"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="20dp"
+            app:cardBackgroundColor="@color/card_surface"
+            app:cardElevation="8dp"
+            android:layout_marginHorizontal="24dp"
+            android:layout_marginTop="16dp"
+            app:layout_constraintTop_toBottomOf="@id/cardCurrentActivity"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="20dp"
+                android:paddingTop="18dp"
+                android:paddingBottom="18dp">
+
+                <!-- Titolo -->
                 <TextView
                     android:id="@+id/tvHeartRateTitle"
                     android:layout_width="wrap_content"
@@ -400,7 +507,7 @@
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintEnd_toEndOf="parent" />
 
-                <!-- Cuore (emoji, nessun drawable necessario) -->
+                <!-- Cuore -->
                 <TextView
                     android:id="@+id/ivHeartIcon"
                     android:layout_width="wrap_content"
@@ -438,7 +545,7 @@
                     android:layout_marginStart="6dp"
                     android:layout_marginBottom="12dp" />
 
-                <!-- Range normale -->
+                <!-- Range + ultima lettura -->
                 <TextView
                     android:id="@+id/tvBpmRange"
                     android:layout_width="wrap_content"
@@ -450,36 +557,45 @@
                     app:layout_constraintTop_toBottomOf="@id/ivHeartIcon"
                     app:layout_constraintStart_toStartOf="parent" />
 
-                <!-- Ultima lettura -->
                 <TextView
                     android:id="@+id/tvLastReading"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:text=""
+                    android:text="Nessuna lettura disponibile"
                     android:textColor="@color/text_muted"
                     android:textSize="11sp"
-                    android:layout_marginTop="14dp"
+                    android:layout_marginTop="6dp"
                     app:layout_constraintTop_toBottomOf="@id/tvBpmRange"
                     app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintEnd_toStartOf="@id/btnConnectRing"
-                    android:layout_marginEnd="8dp"
-                    app:layout_constraintBottom_toBottomOf="parent" />
+                    app:layout_constraintEnd_toEndOf="parent" />
 
-                <!-- Pulsante connetti/disconnetti -->
+                <!-- Pulsante Start/Stop HR -->
+                <Button
+                    android:id="@+id/btnToggleHR"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:text="Start BPM"
+                    android:textSize="12sp"
+                    android:textColor="@color/white"
+                    android:backgroundTint="@color/accent_teal"
+                    android:paddingHorizontal="16dp"
+                    android:layout_marginTop="10dp"
+                    app:layout_constraintTop_toBottomOf="@id/tvLastReading"
+                    app:layout_constraintStart_toStartOf="parent" />
+
+                <!-- Pulsante Connect/Disconnect -->
                 <Button
                     android:id="@+id/btnConnectRing"
                     android:layout_width="wrap_content"
-                    android:layout_height="38dp"
+                    android:layout_height="34dp"
                     android:text="Connetti Ring"
                     android:textSize="12sp"
                     android:textColor="@color/white"
                     android:backgroundTint="@color/accent_teal"
                     android:paddingHorizontal="16dp"
-                    android:layout_marginTop="14dp"
-                    app:cornerRadius="19dp"
-                    app:layout_constraintTop_toBottomOf="@id/tvBpmRange"
-                    app:layout_constraintEnd_toEndOf="parent"
-                    app:layout_constraintBottom_toBottomOf="parent" />
+                    android:layout_marginTop="10dp"
+                    app:layout_constraintTop_toBottomOf="@id/tvLastReading"
+                    app:layout_constraintEnd_toEndOf="parent" />
 
             </androidx.constraintlayout.widget.ConstraintLayout>
         </androidx.cardview.widget.CardView>
