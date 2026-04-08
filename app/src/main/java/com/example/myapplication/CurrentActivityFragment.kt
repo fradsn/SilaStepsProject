@@ -34,6 +34,12 @@ class CurrentActivityFragment : Fragment() {
 
     private val TAG = "CurrentActivityFragment"
 
+    companion object {
+        // stato globale condiviso tra istanze del fragment
+        var isRingConnectedGlobal: Boolean = false
+        var isMeasuringHRGlobal: Boolean = false
+    }
+
     // ── Views: activity card ──────────────────────────────────────────────────
     private lateinit var pulseRing1: View
     private lateinit var pulseRing2: View
@@ -145,7 +151,6 @@ class CurrentActivityFragment : Fragment() {
         applyActivityData(placeholderActivity)
         startPulseAnimation()
         startStatusDotBlink()
-        setHeartDisconnectedUI()
 
         val ctx = requireActivity()
         ctx.bindService(
@@ -154,17 +159,31 @@ class CurrentActivityFragment : Fragment() {
             Context.BIND_AUTO_CREATE
         )
 
+        // ripristina UI in base allo stato globale
+        if (isRingConnectedGlobal) {
+            isConnected = true
+            setHeartConnectedUI()
+            if (isMeasuringHRGlobal) {
+                currentMode = MeasureMode.HR
+                btnToggleHR.text = "Stop BPM"
+            } else {
+                currentMode = MeasureMode.NONE
+                btnToggleHR.text = "Start BPM"
+            }
+        } else {
+            isConnected = false
+            setHeartDisconnectedUI()
+        }
+
         btnConnectRing.setOnClickListener {
             when {
                 connecting -> {
                     Log.d(TAG, "Cancel connection pressed")
                     connecting = false
-                    // non ammazzo tutto, solo reset UI
                     tvStatusLabel.text = "In attesa dispositivo"
                     tvBleStatusLabel.text = "Non connesso"
                     btnConnectRing.text = "Connetti Ring"
                     setDotColor(R.color.text_muted)
-                    // se hai uno scan in BLE puoi fermarlo qui (es. bleService?.stopScan())
                 }
                 isConnected -> {
                     Log.d(TAG, "Disconnect button pressed")
@@ -183,6 +202,7 @@ class CurrentActivityFragment : Fragment() {
                 Log.d(TAG, "Stop HR from button")
                 stopAllSensors()
                 currentMode = MeasureMode.NONE
+                isMeasuringHRGlobal = false
                 btnToggleHR.text = "Start BPM"
             } else {
                 Log.d(TAG, "Start HR from button")
@@ -190,6 +210,7 @@ class CurrentActivityFragment : Fragment() {
                 handler.postDelayed({
                     startHR()
                     currentMode = MeasureMode.HR
+                    isMeasuringHRGlobal = true
                     btnToggleHR.text = "Stop BPM"
                 }, 1200)
             }
@@ -238,8 +259,7 @@ class CurrentActivityFragment : Fragment() {
     override fun onDestroyView() {
         Log.d(TAG, "onDestroyView")
         heartbeatAnimator?.cancel()
-        // NON facciamo stopAllSensors() né unbindService qui,
-        // così cambiando tab il Service continua a vivere
+        // niente stopAllSensors e niente unbindService, così il Service continua
         handler.removeCallbacksAndMessages(null)
         super.onDestroyView()
     }
@@ -282,7 +302,9 @@ class CurrentActivityFragment : Fragment() {
     private fun disconnectRing() {
         Log.d(TAG, "disconnectRing()")
         isConnected = false
+        isRingConnectedGlobal = false
         connecting = false
+        isMeasuringHRGlobal = false
         stopAllSensors()
         handler.postDelayed({
             bleService?.disconnectDevice()
@@ -322,6 +344,7 @@ class CurrentActivityFragment : Fragment() {
         Log.d(TAG, "startSpO2()")
         stopAllSensors()
         currentMode = MeasureMode.SPO2
+        isMeasuringHRGlobal = false
         tvSpO2Value.text = "-- %"
         tvBpValue.text = "-- / --"
         btnToggleHR.text = "Start BPM"
@@ -343,6 +366,7 @@ class CurrentActivityFragment : Fragment() {
         Log.d(TAG, "startBP()")
         stopAllSensors()
         currentMode = MeasureMode.BP
+        isMeasuringHRGlobal = false
         tvBpValue.text = "-- / --"
         tvSpO2Value.text = "-- %"
         btnToggleHR.text = "Start BPM"
@@ -453,6 +477,7 @@ class CurrentActivityFragment : Fragment() {
                         byteArrayOf(0x00, 0x02), "Auto-Stop SpO2"
                     )
                     currentMode = MeasureMode.NONE
+                    isMeasuringHRGlobal = false
                 }
 
                 "BP" -> {
@@ -464,6 +489,7 @@ class CurrentActivityFragment : Fragment() {
                         byteArrayOf(0x00, 0x01), "Auto-Stop BP"
                     )
                     currentMode = MeasureMode.NONE
+                    isMeasuringHRGlobal = false
                 }
 
                 "END_ACK" -> {
@@ -489,24 +515,22 @@ class CurrentActivityFragment : Fragment() {
     private fun onBleConnected() {
         Log.d(TAG, "onBleConnected()")
         isConnected = true
+        isRingConnectedGlobal = true
         connecting = false
-        setDotColor(R.color.accent_teal)
-        tvBleStatusLabel.text = "Connesso"
-        tvStatusLabel.text = "Ring connesso"
-        btnConnectRing.text = "Disconnetti"
+        setHeartConnectedUI()
         tvLastReading.text = "Dispositivo collegato"
         tvBpmValue.text = "--"
         tvSpO2Value.text = "-- %"
         tvBpValue.text = "-- / --"
 
-        // opzionale: sincronizza e NON avvia HR automaticamente
         syncTimeAndUser()
     }
 
     private fun onBleDisconnected() {
         Log.d(TAG, "onBleDisconnected()")
         isConnected = false
-        connecting = false
+        isRingConnectedGlobal = false
+        isMeasuringHRGlobal = false
         setHeartDisconnectedUI()
     }
 
@@ -519,6 +543,13 @@ class CurrentActivityFragment : Fragment() {
     }
 
     // ── UI helpers ────────────────────────────────────────────────────────────
+
+    private fun setHeartConnectedUI() {
+        setDotColor(R.color.accent_teal)
+        tvBleStatusLabel.text = "Connesso"
+        tvStatusLabel.text = "Ring connesso"
+        btnConnectRing.text = "Disconnetti"
+    }
 
     private fun setHeartDisconnectedUI() {
         setDotColor(R.color.text_muted)
