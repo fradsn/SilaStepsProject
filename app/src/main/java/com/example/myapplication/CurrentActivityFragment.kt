@@ -5,14 +5,13 @@ import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothDevice
-import android.content.Context
+import android.content.*
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
+import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import android.view.LayoutInflater
@@ -27,14 +26,15 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-class CurrentActivityFragment : Fragment(), SmartRingBleManager.RingCallback {
+class CurrentActivityFragment : Fragment() {
 
     private val TAG = "CurrentActivityFragment"
 
-    // UI
+    // ── Views: activity card ──────────────────────────────────────────────────
     private lateinit var pulseRing1: View
     private lateinit var pulseRing2: View
     private lateinit var pulseRing3: View
@@ -49,6 +49,7 @@ class CurrentActivityFragment : Fragment(), SmartRingBleManager.RingCallback {
     private lateinit var progressConfidence: ProgressBar
     private lateinit var cardCurrentActivity: View
 
+    // ── Views: heart + health ────────────────────────────────────────────────
     private lateinit var dotBleStatus: View
     private lateinit var tvBleStatusLabel: TextView
     private lateinit var tvBpmValue: TextView
@@ -61,14 +62,19 @@ class CurrentActivityFragment : Fragment(), SmartRingBleManager.RingCallback {
     private lateinit var btnStartSpO2: Button
     private lateinit var btnStartBP: Button
 
-    private val handler = Handler(Looper.getMainLooper())
-
+    // ── BLE ───────────────────────────────────────────────────────────────────
+    private var bleService: BLE? = null
     private var isConnected = false
     private var connecting = false
+    private val handler = Handler(Looper.getMainLooper())
 
+    private val RING_MAC = "FE:1C:6D:14:03:0B"
+
+    // ── Stato misura corrente ────────────────────────────────────────────────
     private enum class MeasureMode { NONE, HR, SPO2, BP }
     private var currentMode: MeasureMode = MeasureMode.NONE
 
+    // Animazione battito
     private var heartbeatAnimator: AnimatorSet? = null
 
     private val placeholderActivity = ActivityData(
@@ -77,23 +83,63 @@ class CurrentActivityFragment : Fragment(), SmartRingBleManager.RingCallback {
         confidence = 87
     )
 
-    private var ringManager: SmartRingBleManager? = null
+    // ── BroadcastReceiver BLE ────────────────────────────────────────────────
+    private val bleReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                "BLE_DATA_RX" -> {
+                    val raw = intent.getStringExtra("data") ?: return
+                    Log.d(TAG, "BLE_DATA_RX: $raw")
+                    if (raw.startsWith("RX: ")) {
+                        val hex = raw.removePrefix("RX: ")
+                        handleDecodedData(hex)
+                    }
+                }
+                "BLE_STATUS_UPDATE" -> {
+                    val status = intent.getStringExtra("status") ?: "DISCONNESSO"
+                    Log.d(TAG, "BLE_STATUS_UPDATE: $status")
+                    when (status) {
+                        "CONNESSO" -> onBleConnected()
+                        "DISCONNESSO" -> onBleDisconnected()
+                    }
+                }
+            }
+        }
+    }
 
+    // ── ServiceConnection ─────────────────────────────────────────────────────
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            Log.d(TAG, "Service connected")
+            bleService = (binder as BLE.LocalBinder).getService()
+            val ok = bleService?.initialize() ?: false
+            Log.d(TAG, "BLE initialize() = $ok")
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            Log.d(TAG, "Service disconnected")
+            bleService = null
+        }
+    }
+
+    // ── Permission launcher ───────────────────────────────────────────────────
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { perms ->
         val allGranted = perms.values.all { it }
-        if (allGranted) startScanAndConnect()
+        Log.d(TAG, "Permissions result: $perms, allGranted=$allGranted")
+        if (allGranted) connectRing()
     }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View = inflater.inflate(R.layout.prova, container, false)
 
-
-    @androidx.annotation.RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        Log.d(TAG, "onViewCreated")
 
         bindViews(view)
         applyActivityData(placeholderActivity)
@@ -101,26 +147,31 @@ class CurrentActivityFragment : Fragment(), SmartRingBleManager.RingCallback {
         startStatusDotBlink()
         setHeartDisconnectedUI()
 
-        if (ringManager == null) {
-            ringManager = SmartRingBleManager(requireContext().applicationContext)
-        }
-        ringManager?.setCallback(this)
+        val ctx = requireActivity()
+        ctx.bindService(
+            Intent(ctx, BLE::class.java),
+            serviceConnection,
+            Context.BIND_AUTO_CREATE
+        )
 
-        btnConnectRing.setOnClickListener  {
+        btnConnectRing.setOnClickListener {
             when {
                 connecting -> {
+                    Log.d(TAG, "Cancel connection pressed")
                     connecting = false
+                    // non ammazzo tutto, solo reset UI
                     tvStatusLabel.text = "In attesa dispositivo"
                     tvBleStatusLabel.text = "Non connesso"
                     btnConnectRing.text = "Connetti Ring"
-                    ringManager?.stopAllMeasurements()
+                    setDotColor(R.color.text_muted)
+                    // se hai uno scan in BLE puoi fermarlo qui (es. bleService?.stopScan())
                 }
                 isConnected -> {
-                    ringManager?.stopAllMeasurements()
-                    ringManager?.disconnect()
-                    setHeartDisconnectedUI()
+                    Log.d(TAG, "Disconnect button pressed")
+                    disconnectRing()
                 }
                 else -> {
+                    Log.d(TAG, "Connect button pressed")
                     checkPermissionsAndConnect()
                 }
             }
@@ -129,89 +180,74 @@ class CurrentActivityFragment : Fragment(), SmartRingBleManager.RingCallback {
         btnToggleHR.setOnClickListener {
             if (!isConnected) return@setOnClickListener
             if (currentMode == MeasureMode.HR) {
-                ringManager?.stopAllMeasurements()
+                Log.d(TAG, "Stop HR from button")
+                stopAllSensors()
                 currentMode = MeasureMode.NONE
                 btnToggleHR.text = "Start BPM"
             } else {
-                ringManager?.stopAllMeasurements()
-                ringManager?.startHeartRate()
-                currentMode = MeasureMode.HR
-                btnToggleHR.text = "Stop BPM"
+                Log.d(TAG, "Start HR from button")
+                stopAllSensors()
+                handler.postDelayed({
+                    startHR()
+                    currentMode = MeasureMode.HR
+                    btnToggleHR.text = "Stop BPM"
+                }, 1200)
             }
         }
 
         btnStartSpO2.setOnClickListener {
             if (!isConnected) return@setOnClickListener
-            currentMode = MeasureMode.SPO2
-            tvSpO2Value.text = "-- %"
-            tvBpValue.text = "-- / --"
-            btnToggleHR.text = "Start BPM"
-            ringManager?.stopAllMeasurements()
-            // SE hai un comando specifico SpO2 nel protocollo,
-            // qui lo richiami; altrimenti lo gestisci con una buildPacket dedicata.
+            Log.d(TAG, "Start SpO2 button")
+            startSpO2()
         }
 
         btnStartBP.setOnClickListener {
             if (!isConnected) return@setOnClickListener
-            currentMode = MeasureMode.BP
-            tvBpValue.text = "-- / --"
-            tvSpO2Value.text = "-- %"
-            btnToggleHR.text = "Start BPM"
-            ringManager?.stopAllMeasurements()
-            ringManager?.startBloodPressure()
+            Log.d(TAG, "Start BP button")
+            startBP()
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        Log.d(TAG, "onStart -> registerReceiver")
+        val filter = IntentFilter().apply {
+            addAction("BLE_DATA_RX")
+            addAction("BLE_STATUS_UPDATE")
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            requireContext().registerReceiver(bleReceiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            ContextCompat.registerReceiver(
+                requireContext(),
+                bleReceiver,
+                filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        Log.d(TAG, "onStop -> unregisterReceiver")
+        try {
+            requireContext().unregisterReceiver(bleReceiver)
+        } catch (_: Exception) {}
+    }
+
     override fun onDestroyView() {
-        super.onDestroyView()
+        Log.d(TAG, "onDestroyView")
         heartbeatAnimator?.cancel()
+        // NON facciamo stopAllSensors() né unbindService qui,
+        // così cambiando tab il Service continua a vivere
         handler.removeCallbacksAndMessages(null)
-        // IMPORTANTE: NON chiamiamo disconnect qui
+        super.onDestroyView()
     }
 
-    // ---- SmartRingBleManager.RingCallback ----------------------------------
-
-    override fun onConnected() {
-        isConnected = true
-        connecting = false
-        setDotColor(R.color.accent_teal)
-        tvBleStatusLabel.text = "Connesso"
-        tvStatusLabel.text = "Ring connesso"
-        btnConnectRing.text = "Disconnetti"
-        tvBpmValue.text = "--"
-        tvSpO2Value.text = "-- %"
-        tvBpValue.text = "-- / --"
-    }
-
-    override fun onDisconnected() {
-        isConnected = false
-        connecting = false
-        setHeartDisconnectedUI()
-    }
-
-    override fun onHeartRateReceived(bpm: Int) {
-        tvBpmValue.text = bpm.toString()
-        val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-        tvLastReading.text = "Ultima lettura: $time"
-        startHeartbeatAnimation()
-    }
-
-    override fun onBloodPressureReceived(systolic: Int, diastolic: Int) {
-        tvBpValue.text = "$systolic / $diastolic"
-    }
-
-    override fun onDeviceFound(device: BluetoothDevice, rssi: Int) {
-        // Qui puoi filtrare per nome/MAC e connetterti subito
-        ringManager?.connect(device)
-        connecting = true
-        tvStatusLabel.text = "Connessione al ring..."
-        tvBleStatusLabel.text = "Connessione..."
-        btnConnectRing.text = "Annulla"
-    }
-
-    // ---- Permessi & connessione --------------------------------------------
+    // ── BLE Logic ─────────────────────────────────────────────────────────────
 
     private fun checkPermissionsAndConnect() {
+        Log.d(TAG, "checkPermissionsAndConnect()")
         val needed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             arrayOf(
                 Manifest.permission.BLUETOOTH_SCAN,
@@ -224,28 +260,265 @@ class CurrentActivityFragment : Fragment(), SmartRingBleManager.RingCallback {
             ContextCompat.checkSelfPermission(requireContext(), it) != PackageManager.PERMISSION_GRANTED
         }
         if (missing.isEmpty()) {
-            startScanAndConnect()
+            connectRing()
         } else {
+            Log.d(TAG, "Missing permissions: $missing")
             permissionLauncher.launch(missing.toTypedArray())
         }
     }
 
     @SuppressLint("MissingPermission")
-    private fun startScanAndConnect() {
-        val adapter = BluetoothAdapter.getDefaultAdapter()
-        if (adapter == null || !adapter.isEnabled) {
-            tvStatusLabel.text = "Bluetooth disabilitato"
-            return
-        }
-        setDotColor(R.color.accent_orange)
-        tvStatusLabel.text = "Ricerca ring..."
-        tvBleStatusLabel.text = "Scanning..."
-        btnConnectRing.text = "Annulla"
+    private fun connectRing() {
+        Log.d(TAG, "Tentativo connessione a $RING_MAC")
         connecting = true
-        ringManager?.startScan()
+        setDotColor(R.color.accent_orange)
+        tvBleStatusLabel.text = "Connessione..."
+        tvStatusLabel.text = "Connessione al ring..."
+        btnConnectRing.text = "Annulla"
+        bleService?.connect(RING_MAC)
     }
 
-    // ---- Helpers UI --------------------------------------------------------
+    @SuppressLint("MissingPermission")
+    private fun disconnectRing() {
+        Log.d(TAG, "disconnectRing()")
+        isConnected = false
+        connecting = false
+        stopAllSensors()
+        handler.postDelayed({
+            bleService?.disconnectDevice()
+        }, 1200)
+        setHeartDisconnectedUI()
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startHR() {
+        Log.d(TAG, "startHR() -> invio sequenza BPM")
+        bleService?.sendCommand(
+            0x03.toByte(),
+            0x0C.toByte(),
+            byteArrayOf(0x01, 0x01),
+            "Stream ON"
+        )
+        handler.postDelayed({
+            bleService?.sendCommand(
+                0x03.toByte(),
+                0x0B.toByte(),
+                byteArrayOf(0x02, 0x00),
+                "Workout Mode"
+            )
+        }, 500)
+        handler.postDelayed({
+            bleService?.sendCommand(
+                0x03.toByte(),
+                0x09.toByte(),
+                byteArrayOf(0x01, 0x01, 0x01),
+                "Start BPM"
+            )
+        }, 1000)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startSpO2() {
+        Log.d(TAG, "startSpO2()")
+        stopAllSensors()
+        currentMode = MeasureMode.SPO2
+        tvSpO2Value.text = "-- %"
+        tvBpValue.text = "-- / --"
+        btnToggleHR.text = "Start BPM"
+
+        bleService?.sendCommand(
+            0x03.toByte(), 0x0C.toByte(),
+            byteArrayOf(0x01, 0x01), "Stream ON SpO2"
+        )
+        handler.postDelayed({
+            bleService?.sendCommand(
+                0x03.toByte(), 0x2F.toByte(),
+                byteArrayOf(0x01, 0x02), "Start SpO2"
+            )
+        }, 600)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startBP() {
+        Log.d(TAG, "startBP()")
+        stopAllSensors()
+        currentMode = MeasureMode.BP
+        tvBpValue.text = "-- / --"
+        tvSpO2Value.text = "-- %"
+        btnToggleHR.text = "Start BPM"
+
+        bleService?.sendCommand(
+            0x03.toByte(), 0x0C.toByte(),
+            byteArrayOf(0x01, 0x01), "Stream ON BP"
+        )
+        handler.postDelayed({
+            bleService?.sendCommand(
+                0x03.toByte(), 0x2F.toByte(),
+                byteArrayOf(0x01, 0x01), "Start BP"
+            )
+        }, 600)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun stopAllSensors() {
+        Log.d(TAG, "stopAllSensors()")
+        currentMode = MeasureMode.NONE
+        bleService?.sendCommand(
+            0x03.toByte(),
+            0x09.toByte(),
+            byteArrayOf(0x00, 0x01, 0x01),
+            "Stop BPM"
+        )
+        handler.postDelayed({
+            bleService?.sendCommand(
+                0x03.toByte(),
+                0x2F.toByte(),
+                byteArrayOf(0x00, 0x02),
+                "Stop SpO2"
+            )
+        }, 300)
+        handler.postDelayed({
+            bleService?.sendCommand(
+                0x03.toByte(),
+                0x2F.toByte(),
+                byteArrayOf(0x00, 0x01),
+                "Stop BP"
+            )
+        }, 500)
+        handler.postDelayed({
+            bleService?.sendCommand(
+                0x03.toByte(),
+                0x0B.toByte(),
+                byteArrayOf(0x00, 0x00),
+                "Idle Mode"
+            )
+        }, 800)
+        handler.postDelayed({
+            bleService?.sendCommand(
+                0x03.toByte(),
+                0x0C.toByte(),
+                byteArrayOf(0x00, 0x01),
+                "Stream OFF"
+            )
+        }, 1100)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun syncTimeAndUser() {
+        Log.d(TAG, "syncTimeAndUser()")
+        val c = Calendar.getInstance()
+        val timePayload = byteArrayOf(
+            (c.get(Calendar.YEAR) - 2000).toByte(),
+            (c.get(Calendar.MONTH) + 1).toByte(),
+            c.get(Calendar.DAY_OF_MONTH).toByte(),
+            c.get(Calendar.HOUR_OF_DAY).toByte(),
+            c.get(Calendar.MINUTE).toByte(),
+            c.get(Calendar.SECOND).toByte()
+        )
+        bleService?.sendCommand(
+            0x01.toByte(),
+            0x00.toByte(),
+            timePayload,
+            "Sync Time"
+        )
+        handler.postDelayed({
+            bleService?.sendCommand(
+                0x01.toByte(),
+                0x03.toByte(),
+                byteArrayOf(0xAF.toByte(), 0x4B, 0x00, 0x1E),
+                "Init User"
+            )
+        }, 600)
+    }
+
+    // ── Gestione pacchetti dati ───────────────────────────────────────────────
+
+    @SuppressLint("MissingPermission")
+    private fun handleDecodedData(hex: String) {
+        Log.d(TAG, "handleDecodedData(hex=$hex)")
+        Decoder.decode(hex)?.let { result ->
+            Log.d(
+                TAG,
+                "Decoded: type=${result.type}, value=${result.value}, sys=${result.sys}, dia=${result.dia}"
+            )
+            when (result.type) {
+                "BPM" -> {
+                    if (result.value > 0) updateBpm(result.value)
+                }
+
+                "SPO2" -> {
+                    tvSpO2Value.text = "${result.value} %"
+                    bleService?.sendCommand(
+                        0x03.toByte(), 0x2F.toByte(),
+                        byteArrayOf(0x00, 0x02), "Auto-Stop SpO2"
+                    )
+                    currentMode = MeasureMode.NONE
+                }
+
+                "BP" -> {
+                    val sys = result.sys
+                    val dia = result.dia
+                    tvBpValue.text = "$sys / $dia"
+                    bleService?.sendCommand(
+                        0x03.toByte(), 0x2F.toByte(),
+                        byteArrayOf(0x00, 0x01), "Auto-Stop BP"
+                    )
+                    currentMode = MeasureMode.NONE
+                }
+
+                "END_ACK" -> {
+                    Log.d(TAG, "Ricevuto END_ACK, invio ACK 0x04/0x0E")
+                    bleService?.sendCommand(
+                        0x04.toByte(),
+                        0x0E.toByte(),
+                        byteArrayOf(0x00),
+                        "ACK Fine Misura"
+                    )
+                }
+
+                "WAIT" -> {
+                    if (tvSpO2Value.text == "-- %") tvSpO2Value.text = "..."
+                    if (tvBpValue.text == "-- / --") tvBpValue.text = "..."
+                }
+            }
+        }
+    }
+
+    // ── Callback stato BLE ───────────────────────────────────────────────────
+
+    private fun onBleConnected() {
+        Log.d(TAG, "onBleConnected()")
+        isConnected = true
+        connecting = false
+        setDotColor(R.color.accent_teal)
+        tvBleStatusLabel.text = "Connesso"
+        tvStatusLabel.text = "Ring connesso"
+        btnConnectRing.text = "Disconnetti"
+        tvLastReading.text = "Dispositivo collegato"
+        tvBpmValue.text = "--"
+        tvSpO2Value.text = "-- %"
+        tvBpValue.text = "-- / --"
+
+        // opzionale: sincronizza e NON avvia HR automaticamente
+        syncTimeAndUser()
+    }
+
+    private fun onBleDisconnected() {
+        Log.d(TAG, "onBleDisconnected()")
+        isConnected = false
+        connecting = false
+        setHeartDisconnectedUI()
+    }
+
+    private fun updateBpm(bpm: Int) {
+        Log.d(TAG, "updateBpm($bpm)")
+        tvBpmValue.text = bpm.toString()
+        val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+        tvLastReading.text = "Ultima lettura: $time"
+        startHeartbeatAnimation()
+    }
+
+    // ── UI helpers ────────────────────────────────────────────────────────────
 
     private fun setHeartDisconnectedUI() {
         setDotColor(R.color.text_muted)
@@ -287,13 +560,14 @@ class CurrentActivityFragment : Fragment(), SmartRingBleManager.RingCallback {
         ivHeartIcon = view.findViewById(R.id.ivHeartIcon)
         btnConnectRing = view.findViewById(R.id.btnConnectRing)
         btnToggleHR = view.findViewById(R.id.btnToggleHR)
+
         tvSpO2Value = view.findViewById(R.id.tvSpO2Value)
         tvBpValue = view.findViewById(R.id.tvBpValue)
         btnStartSpO2 = view.findViewById(R.id.btnStartSpO2)
         btnStartBP = view.findViewById(R.id.btnStartBP)
     }
 
-    // ---- Activity recognition card ----------------------------------------
+    // ── Activity data (ML) ────────────────────────────────────────────────────
 
     fun updateActivityUI(data: ActivityData) {
         val fadeOut = ObjectAnimator.ofFloat(cardCurrentActivity, "alpha", 1f, 0f)
@@ -322,7 +596,7 @@ class CurrentActivityFragment : Fragment(), SmartRingBleManager.RingCallback {
         }.start()
     }
 
-    // ---- Animazioni --------------------------------------------------------
+    // ── Animazioni ────────────────────────────────────────────────────────────
 
     private fun startHeartbeatAnimation() {
         heartbeatAnimator?.cancel()
@@ -370,12 +644,13 @@ class CurrentActivityFragment : Fragment(), SmartRingBleManager.RingCallback {
             repeatCount = ValueAnimator.INFINITE
             interpolator = AccelerateDecelerateInterpolator()
         }
-        val alpha = ObjectAnimator.ofFloat(view, "alpha", view.alpha, view.alpha * 0.4f, view.alpha).apply {
-            duration = durationMs
-            startDelay = delay
-            repeatCount = ValueAnimator.INFINITE
-            interpolator = AccelerateDecelerateInterpolator()
-        }
+        val alpha = ObjectAnimator.ofFloat(view, "alpha", view.alpha, view.alpha * 0.4f, view.alpha)
+            .apply {
+                duration = durationMs
+                startDelay = delay
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = AccelerateDecelerateInterpolator()
+            }
         AnimatorSet().apply {
             playTogether(scaleX, scaleY, alpha)
             start()
@@ -409,6 +684,7 @@ class CurrentActivityFragment : Fragment(), SmartRingBleManager.RingCallback {
     }
 }
 
+// Data class per output modello ML
 data class ActivityData(
     val label: String,
     val iconRes: Int,
