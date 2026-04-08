@@ -540,11 +540,16 @@ class CurrentActivityFragment : Fragment() {
         Log.d(TAG, "updateBpm($bpm)")
         tvBpmValue.text = bpm.toString()
 
-        // aggiungi il valore allo storico (max 100 punti)
+        // aggiorna history (max 100 punti)
         bpmHistory.add(bpm.toFloat())
         if (bpmHistory.size > 100) {
             bpmHistory.removeAt(0)
         }
+
+        // se il ChartsFragment è attivo, aggiorna il grafico in tempo reale
+        val chartsFragment =
+            parentFragmentManager.findFragmentByTag("charts") as? ChartsFragment
+        chartsFragment?.updateHeartRateChart(bpmHistory, bpm)
 
         val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
         tvLastReading.text = "Ultima lettura: $time"
