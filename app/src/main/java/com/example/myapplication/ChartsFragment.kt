@@ -32,8 +32,6 @@ class ChartsFragment : Fragment() {
     private val activityMinutes = listOf(42f, 18f, 65f, 20f, 15f)
     private val activityColors  = listOf(colorGreen, colorGreenLight, colorSage, colorTeal, colorAmber)
 
-    private val bpmData = listOf(72f, 75f, 80f, 95f, 110f, 105f, 98f, 88f, 78f, 74f, 72f, 76f)
-
     // ─────────────────────────────────────────────────────────────────────────
 
     override fun onCreateView(
@@ -52,7 +50,15 @@ class ChartsFragment : Fragment() {
         setupLineChart(view.findViewById(R.id.lineChart))
         setupPieChart(view.findViewById(R.id.pieChart))
 
-        view.findViewById<TextView>(R.id.tvCurrentBpm).text = "--"
+        val tvCurrentBpm = view.findViewById<TextView>(R.id.tvCurrentBpm)
+
+        // ripristina eventuale storico già raccolto
+        val history = CurrentActivityFragment.bpmHistory
+        if (history.isNotEmpty()) {
+            updateHeartRateChart(history, history.last().toInt())
+        } else {
+            tvCurrentBpm.text = "--"
+        }
     }
 
     // ─────────────────────── Summary Cards ────────────────────────────────────
@@ -106,7 +112,8 @@ class ChartsFragment : Fragment() {
     // ─────────────────────── Line Chart ───────────────────────────────────────
 
     private fun setupLineChart(chart: LineChart) {
-        val entries = bpmData.mapIndexed { i, v -> Entry(i.toFloat(), v) }
+        // nessun dato sample: grafico vuoto inizialmente
+        val entries = listOf<Entry>()
 
         val dataSet = LineDataSet(entries, "BPM").apply {
             color          = colorAmber
@@ -149,8 +156,7 @@ class ChartsFragment : Fragment() {
     }
 
     /**
-     * Chiama questo metodo per aggiornare il grafico con dati shimmer reali.
-     * Esempio: updateHeartRateChart(listOf(72f, 78f, 85f), 85)
+     * Aggiorna il grafico con i dati reali dei BPM.
      */
     fun updateHeartRateChart(bpmList: List<Float>, currentBpm: Int) {
         val chart = view?.findViewById<LineChart>(R.id.lineChart) ?: return
@@ -184,7 +190,7 @@ class ChartsFragment : Fragment() {
             isDrawHoleEnabled       = true
             holeRadius              = 52f
             transparentCircleRadius = 57f
-            setHoleColor(colorBg)                      // ← fix: metodo invece di property
+            setHoleColor(colorBg)
             setTransparentCircleColor(colorBg)
             setTransparentCircleAlpha(80)
             setUsePercentValues(true)

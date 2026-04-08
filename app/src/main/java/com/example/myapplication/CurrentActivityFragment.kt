@@ -38,6 +38,7 @@ class CurrentActivityFragment : Fragment() {
         // stato globale condiviso tra istanze del fragment
         var isRingConnectedGlobal: Boolean = false
         var isMeasuringHRGlobal: Boolean = false
+        val bpmHistory: MutableList<Float> = mutableListOf()
     }
 
     // ── Views: activity card ──────────────────────────────────────────────────
@@ -88,6 +89,7 @@ class CurrentActivityFragment : Fragment() {
         iconRes = R.drawable.ic_activity_walking,
         confidence = 87
     )
+
 
     // ── BroadcastReceiver BLE ────────────────────────────────────────────────
     private val bleReceiver = object : BroadcastReceiver() {
@@ -537,11 +539,17 @@ class CurrentActivityFragment : Fragment() {
     private fun updateBpm(bpm: Int) {
         Log.d(TAG, "updateBpm($bpm)")
         tvBpmValue.text = bpm.toString()
+
+        // aggiungi il valore allo storico (max 100 punti)
+        bpmHistory.add(bpm.toFloat())
+        if (bpmHistory.size > 100) {
+            bpmHistory.removeAt(0)
+        }
+
         val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
         tvLastReading.text = "Ultima lettura: $time"
         startHeartbeatAnimation()
     }
-
     // ── UI helpers ────────────────────────────────────────────────────────────
 
     private fun setHeartConnectedUI() {
