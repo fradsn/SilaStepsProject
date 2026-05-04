@@ -39,5 +39,5 @@ class ProfileFragment : Fragment() {
             startActivity(tornaAlLogin)
             requireActivity().finish()
         }
-}
+    }
 }

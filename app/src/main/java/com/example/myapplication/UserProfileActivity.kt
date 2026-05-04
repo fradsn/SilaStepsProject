@@ -41,8 +41,3 @@ class UserProfileActivity : AppCompatActivity() {
             .commit()
     }
 }
-
-
-
-
-
