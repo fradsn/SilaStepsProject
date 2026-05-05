@@ -3,6 +3,8 @@ package com.example.myapplication
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import com.example.myapplication.ui.profile.ProfileFragment
+import com.example.myapplication.databinding.ActivityUserProfileBinding
 import androidx.fragment.app.Fragment
 import com.google.android.material.bottomnavigation.BottomNavigationView
 
