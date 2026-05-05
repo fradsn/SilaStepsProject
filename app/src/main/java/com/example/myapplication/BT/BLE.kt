@@ -33,7 +33,15 @@ class BLE : Service() {
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 broadcastLog("Canali pronti.")
+
+                // 1. Abilitiamo le notifiche/indicazioni
                 enableNotifications(gatt)
+
+                // 2. Setup automatico dell'anello alla connessione
+                // Usiamo un delay di 1 secondo per dare tempo al firmware di stabilizzare i canali
+                Handler(Looper.getMainLooper()).postDelayed({
+                    syncUserInfoWithDevice()
+                }, 1000)
             }
         }
 
@@ -41,6 +49,22 @@ class BLE : Service() {
             val hex = characteristic.value.joinToString(" ") { String.format("%02X", it) }
             sendBroadcast(Intent("BLE_DATA_RX").putExtra("data", "RX: $hex"))
         }
+    }
+
+    /**
+     * Recupera i dati biometrici salvati e li invia all'anello
+     */
+    fun syncUserInfoWithDevice() {
+        // Genera il payload dinamico usando le SharedPreferences
+        val payload = SmartRingProtocol.buildUserInfoPayload(this)
+
+        // Comando 0x01, Key 0x01 per SetUserInfo secondo protocollo
+        sendCommand(
+            id = 0x01.toByte(),
+            key = 0x01.toByte(),
+            payload = payload,
+            desc = "Setup Utente alla connessione"
+        )
     }
 
     @SuppressLint("MissingPermission")
