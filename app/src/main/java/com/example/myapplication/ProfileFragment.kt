@@ -6,9 +6,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
-import android.widget.EditText
-import android.widget.Toast
+import android.widget.*
 import androidx.fragment.app.Fragment
 import com.example.myapplication.Login
 import com.example.myapplication.R
@@ -29,10 +27,8 @@ class ProfileFragment : Fragment() {
         _binding = FragmentProfileBinding.inflate(inflater, container, false)
         auth = FirebaseAuth.getInstance()
 
-        // Visualizza l'email dell'utente corrente nell'header
         binding.profileEmail.text = "Benvenuto, ${auth.currentUser?.email ?: "Utente"}"
 
-        // Gestione LOGOUT: Torna alla schermata Login e pulisce la cronologia delle attività
         binding.logoutButton.setOnClickListener {
             auth.signOut()
             val intent = Intent(requireContext(), Login::class.java)
@@ -41,26 +37,17 @@ class ProfileFragment : Fragment() {
             activity?.finish()
         }
 
-        // Configura i click per i box del menu
         setupMenuHandlers()
-
         return binding.root
     }
 
     private fun setupMenuHandlers() {
-        // 1. USER INFO: Apre il BottomSheet con salvataggio locale
-        binding.menuUserInfo.setOnClickListener {
-            showUserInfoDialog()
-        }
-
-        // 2. TROVA DISPOSITIVI: Placeholder per la futura logica Bluetooth
+        binding.menuUserInfo.setOnClickListener { showUserInfoDialog() }
         binding.menuFindDevices.setOnClickListener {
-            Toast.makeText(context, "Ricerca Smart Ring in corso...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Ricerca Bluetooth...", Toast.LENGTH_SHORT).show()
         }
-
-        // 3. DISPOSITIVI CONNESSI: Placeholder per lo stato della connessione
         binding.menuConnectedDevices.setOnClickListener {
-            Toast.makeText(context, "Verifica stato dispositivi...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Verifica connessione...", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -74,10 +61,16 @@ class ProfileFragment : Fragment() {
         val etHeight = view.findViewById<EditText>(R.id.editHeight)
         val etWeight = view.findViewById<EditText>(R.id.editWeight)
         val etAge = view.findViewById<EditText>(R.id.editAge)
+        val spinnerGender = view.findViewById<Spinner>(R.id.spinnerGender)
 
-        // --- RECUPERO DATI LOCALI (SharedPreferences) ---
-        // Usiamo l'UID dell'utente per rendere il salvataggio unico per ogni account sul PC
-        val userId = auth.currentUser?.uid ?: "default_user"
+        // Configurazione Spinner Sesso via codice
+        val genderOptions = arrayOf("Uomo", "Donna")
+        val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, genderOptions)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinnerGender.adapter = adapter
+
+        // Recupero dati locali
+        val userId = auth.currentUser?.uid ?: "user"
         val sharedPref = requireActivity().getSharedPreferences("UserData_$userId", Context.MODE_PRIVATE)
 
         etName.setText(sharedPref.getString("name", ""))
@@ -85,14 +78,14 @@ class ProfileFragment : Fragment() {
         etHeight.setText(sharedPref.getString("height", ""))
         etWeight.setText(sharedPref.getString("weight", ""))
         etAge.setText(sharedPref.getString("age", ""))
+        spinnerGender.setSelection(sharedPref.getInt("gender_pos", 0))
 
-        // --- LOGICA DI SALVATAGGIO ---
         btnSave.setOnClickListener {
             val name = etName.text.toString().trim()
             val surname = etSurname.text.toString().trim()
 
             if (name.isEmpty() || surname.isEmpty()) {
-                Toast.makeText(context, "Nome e Cognome sono obbligatori", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Nome e Cognome obbligatori", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
@@ -102,10 +95,11 @@ class ProfileFragment : Fragment() {
                 putString("height", etHeight.text.toString().trim())
                 putString("weight", etWeight.text.toString().trim())
                 putString("age", etAge.text.toString().trim())
-                apply() // Salva su disco in modo asincrono
+                putInt("gender_pos", spinnerGender.selectedItemPosition)
+                commit() // commit() garantisce che il dato venga scritto subito sul disco del telefono
             }
 
-            Toast.makeText(context, "Profilo aggiornato localmente!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Profilo aggiornato!", Toast.LENGTH_SHORT).show()
             dialog.dismiss()
         }
 
