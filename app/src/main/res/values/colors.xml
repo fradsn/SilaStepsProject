@@ -8,7 +8,7 @@
     <!-- Testi -->
     <color name="text_muted">#7A9B7D</color>
     <color name="white">#F0F7F0</color>
-
+    <color name="orange_primary">#FF9800</color>
     <!-- Accenti -->
     <color name="accent_teal">#4CAF74</color>       <!-- verde bosco -->
     <color name="accent_green">#66BB6A</color>       <!-- verde vivo (status dot) -->
