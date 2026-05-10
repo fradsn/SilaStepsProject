@@ -46,7 +46,7 @@ class CurrentActivityFragment : Fragment() {
     private lateinit var pulseRing3: View
 
     private var bleService: BLE? = null
-    private val RING_MAC = "FE:1C:6D:14:03:0B"
+
 
     private val bleReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
