@@ -60,6 +60,16 @@
                     android:textColor="#B3FFFFFF"
                     android:textSize="14sp"
                     android:layout_marginTop="4dp"/>
+
+                <TextView
+                    android:id="@+id/tvBatteryLevel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Batteria: --%"
+                    android:textColor="#4CAF50"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:layout_marginTop="8dp" />
             </LinearLayout>
 
             <Button

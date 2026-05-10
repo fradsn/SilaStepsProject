@@ -33,15 +33,13 @@ class BLE : Service() {
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 broadcastLog("Canali pronti.")
-
-                // 1. Abilitiamo le notifiche/indicazioni
                 enableNotifications(gatt)
 
-                // 2. Setup automatico dell'anello alla connessione
-                // Usiamo un delay di 1 secondo per dare tempo al firmware di stabilizzare i canali
                 Handler(Looper.getMainLooper()).postDelayed({
                     syncUserInfoWithDevice()
-                }, 1000)
+                    // Richiesta automatica batteria alla connessione
+                    requestBatteryLevel()
+                }, 1500)
             }
         }
 
@@ -51,20 +49,14 @@ class BLE : Service() {
         }
     }
 
-    /**
-     * Recupera i dati biometrici salvati e li invia all'anello
-     */
-    fun syncUserInfoWithDevice() {
-        // Genera il payload dinamico usando le SharedPreferences
-        val payload = SmartRingProtocol.buildUserInfoPayload(this)
+    fun requestBatteryLevel() {
+        val payload = byteArrayOf(0x47.toByte(), 0x43.toByte())
+        sendCommand(0x02.toByte(), 0x00.toByte(), payload, "Richiesta Batteria")
+    }
 
-        // Comando 0x01, Key 0x01 per SetUserInfo secondo protocollo
-        sendCommand(
-            id = 0x01.toByte(),
-            key = 0x01.toByte(),
-            payload = payload,
-            desc = "Setup Utente alla connessione"
-        )
+    fun syncUserInfoWithDevice() {
+        val payload = SmartRingProtocol.buildUserInfoPayload(this)
+        sendCommand(0x01.toByte(), 0x01.toByte(), payload, "Setup Utente")
     }
 
     @SuppressLint("MissingPermission")
@@ -122,9 +114,7 @@ class BLE : Service() {
     private fun broadcastLog(msg: String) {
         sendBroadcast(Intent("BLE_DATA_RX").putExtra("data", msg))
     }
-    fun isDeviceConnected(): Boolean {
-        return bluetoothGatt != null
-    }
+    fun isDeviceConnected(): Boolean = bluetoothGatt != null
     override fun onBind(intent: Intent): IBinder = binder
     inner class LocalBinder : Binder() { fun getService(): BLE = this@BLE }
 }

@@ -1,6 +1,7 @@
 package com.example.myapplication
 
 import android.content.*
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
@@ -22,6 +23,28 @@ class ProfileFragment : Fragment() {
     private var bleService: BLE? = null
     private var isBound = false
     private lateinit var bleManager: SmartRingBleManager
+
+    // Riferimento dinamico alla TextView della batteria nel BottomSheet
+    private var tvBatteryLevelInSheet: TextView? = null
+
+    // Ricevitore per i dati provenienti dal servizio BLE
+    private val bleReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "BLE_DATA_RX") {
+                val raw = intent.getStringExtra("data") ?: return
+                // Cerchiamo solo i messaggi che iniziano con "RX: " (dati ricevuti dall'anello)
+                if (raw.startsWith("RX: ")) {
+                    val hex = raw.removePrefix("RX: ")
+                    val decoded = Decoder.decode(hex)
+
+                    // Se il decoder identifica un pacchetto BATTERY, aggiorniamo la UI
+                    if (decoded?.type == "BATTERY") {
+                        updateBatteryUI(decoded.battery, decoded.chargingStatus)
+                    }
+                }
+            }
+        }
+    }
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -55,6 +78,8 @@ class ProfileFragment : Fragment() {
 
         view.findViewById<MaterialCardView>(R.id.menuConnectedDevices)?.setOnClickListener {
             if (isBound && bleService != null && bleService!!.isDeviceConnected()) {
+                // Richiediamo l'aggiornamento della batteria all'anello appena clicchiamo
+                bleService?.requestBatteryLevel()
                 showConnectedDeviceBottomSheet()
             } else {
                 Toast.makeText(context, "Nessun dispositivo connesso", Toast.LENGTH_SHORT).show()
@@ -92,8 +117,11 @@ class ProfileFragment : Fragment() {
         val tvAddress = sheetView.findViewById<TextView>(R.id.tvDeviceAddress)
         val btnDisconnect = sheetView.findViewById<Button>(R.id.btnDisconnect)
 
+        // Colleghiamo il riferimento della batteria per aggiornarlo quando arriva il segnale BT
+        tvBatteryLevelInSheet = sheetView.findViewById<TextView>(R.id.tvBatteryLevel)
+
         tvName.text = "Smart Ring"
-        tvAddress.text = "FE:1C:6D:14:03:0B"
+        tvAddress.text = "Connesso" // Rimosso il MAC fisso per coerenza con le tue modifiche
 
         btnDisconnect?.setOnClickListener {
             bleService?.disconnectDevice()
@@ -103,6 +131,19 @@ class ProfileFragment : Fragment() {
 
         dialog.setContentView(sheetView)
         dialog.show()
+
+        // Puliamo il riferimento quando il dialog viene chiuso
+        dialog.setOnDismissListener {
+            tvBatteryLevelInSheet = null
+        }
+    }
+
+    private fun updateBatteryUI(percent: Int, status: Int) {
+        activity?.runOnUiThread {
+            // Determina l'icona o il testo in base allo stato di ricarica
+            val chargingIcon = if (status == 0x02) "⚡ " else ""
+            tvBatteryLevelInSheet?.text = "Batteria: $chargingIcon$percent%"
+        }
     }
 
     private fun showUserInfoBottomSheet() {
@@ -169,7 +210,6 @@ class ProfileFragment : Fragment() {
         rv.adapter = adapter
         bleManager = SmartRingBleManager(requireContext(), adapter)
 
-        // Helper per gestire lo stato della UI durante la scansione
         fun updateScanState(isScanning: Boolean) {
             if (isScanning) {
                 btnScan?.text = "RICERCA IN CORSO..."
@@ -187,7 +227,6 @@ class ProfileFragment : Fragment() {
             bleManager.startScan()
             updateScanState(true)
 
-            // Ferma graficamente la ricerca dopo 10 secondi
             Handler(Looper.getMainLooper()).postDelayed({
                 bleManager.stopScan()
                 updateScanState(false)
@@ -197,7 +236,6 @@ class ProfileFragment : Fragment() {
         dialog.setContentView(sheetView)
         dialog.show()
 
-        // Avvio automatico all'apertura
         bleManager.startScan()
         updateScanState(true)
 
@@ -205,6 +243,25 @@ class ProfileFragment : Fragment() {
             bleManager.stopScan()
             updateScanState(false)
         }, 10000)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Registriamo il ricevitore per ascoltare i dati in arrivo
+        val filter = IntentFilter("BLE_DATA_RX")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            requireContext().registerReceiver(bleReceiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            requireContext().registerReceiver(bleReceiver, filter)
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Disregistriamo il ricevitore per evitare memory leak
+        try {
+            requireContext().unregisterReceiver(bleReceiver)
+        } catch (e: Exception) { }
     }
 
     override fun onDestroy() {

@@ -7,7 +7,6 @@ import java.util.Calendar
 object SmartRingProtocol {
     private const val POLYNOMIAL = 0x1021
 
-    // --- FUNZIONI ESISTENTI (Mantienile) ---
     fun calculateCRC16(data: ByteArray): ByteArray {
         var crc = 0xFFFF
         for (b in data) {
@@ -26,23 +25,25 @@ object SmartRingProtocol {
         return packetWithoutCrc + calculateCRC16(packetWithoutCrc)
     }
 
-    // --- NUOVA FUNZIONE PER I DATI UTENTE ---
+    // --- NUOVA FUNZIONE PER RICHIESTA BATTERIA ---
+    fun buildBatteryRequestPacket(): ByteArray {
+        // Command ID 0x02, Key 0x00, Payload 0x47 0x43
+        return buildPacket(0x02.toByte(), 0x00.toByte(), byteArrayOf(0x47.toByte(), 0x43.toByte()))
+    }
+
     fun buildUserInfoPayload(context: Context): ByteArray {
         val auth = FirebaseAuth.getInstance()
         val userId = auth.currentUser?.uid ?: "user"
         val sharedPref = context.getSharedPreferences("UserData_$userId", Context.MODE_PRIVATE)
 
-        // Recupero dei dati con i valori di fallback (default) se non presenti
-        val gender = sharedPref.getInt("gender_pos", 0).toByte() // 0=Uomo, 1=Donna
+        val gender = sharedPref.getInt("gender_pos", 0).toByte()
         val age = (sharedPref.getString("age", "25")?.toIntOrNull() ?: 25).toByte()
         val height = (sharedPref.getString("height", "175")?.toIntOrNull() ?: 175).toByte()
         val weight = (sharedPref.getString("weight", "70")?.toIntOrNull() ?: 70).toByte()
 
-        // Obiettivo passi (default 10.000 passi = 0x2710)
         val stepTargetLow = (10000 and 0xFF).toByte()
         val stepTargetHigh = ((10000 ushr 8) and 0xFF).toByte()
 
-        // Sincronizzazione Orario
         val cal = Calendar.getInstance()
         val year = (cal.get(Calendar.YEAR) - 2000).toByte()
         val month = (cal.get(Calendar.MONTH) + 1).toByte()
@@ -51,7 +52,6 @@ object SmartRingProtocol {
         val minute = cal.get(Calendar.MINUTE).toByte()
         val second = cal.get(Calendar.SECOND).toByte()
 
-        // Costruzione del payload (12 byte totali)
         return byteArrayOf(
             gender, age, height, weight,
             stepTargetLow, stepTargetHigh,
