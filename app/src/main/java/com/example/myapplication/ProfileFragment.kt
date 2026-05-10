@@ -2,7 +2,9 @@ package com.example.myapplication
 
 import android.content.*
 import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -51,7 +53,6 @@ class ProfileFragment : Fragment() {
             showDevicePickerSheet()
         }
 
-        // NUOVO: Gestione Dispositivi Connessi
         view.findViewById<MaterialCardView>(R.id.menuConnectedDevices)?.setOnClickListener {
             if (isBound && bleService != null && bleService!!.isDeviceConnected()) {
                 showConnectedDeviceBottomSheet()
@@ -85,14 +86,12 @@ class ProfileFragment : Fragment() {
 
     private fun showConnectedDeviceBottomSheet() {
         val dialog = BottomSheetDialog(requireContext())
-        // Assicurati di creare il file layout_connected_device_sheet.xml come fornito sotto
         val sheetView = layoutInflater.inflate(R.layout.layout_connected_device_sheet, null)
 
         val tvName = sheetView.findViewById<TextView>(R.id.tvDeviceName)
         val tvAddress = sheetView.findViewById<TextView>(R.id.tvDeviceAddress)
         val btnDisconnect = sheetView.findViewById<Button>(R.id.btnDisconnect)
 
-        // Recuperiamo i dati (Nota: l'indirizzo è quello fisso usato nell'app o potresti estrarlo dal gatt nel Service)
         tvName.text = "Smart Ring"
         tvAddress.text = "FE:1C:6D:14:03:0B"
 
@@ -154,12 +153,14 @@ class ProfileFragment : Fragment() {
         val dialog = BottomSheetDialog(requireContext())
         val sheetView = layoutInflater.inflate(R.layout.layout_find_devices_sheet, null)
         val rv = sheetView.findViewById<RecyclerView>(R.id.rvDevices)
-        val btnScan = sheetView.findViewById<View>(R.id.btnScan)
+        val btnScan = sheetView.findViewById<Button>(R.id.btnScan)
+        val progress = sheetView.findViewById<ProgressBar>(R.id.scanProgress)
 
         val adapter = DeviceAdapter { device ->
             if (isBound && bleService != null) {
                 bleService?.connect(device.address)
                 Toast.makeText(context, "Connessione a: ${device.name ?: "Anello"}", Toast.LENGTH_SHORT).show()
+                bleManager.stopScan()
                 dialog.dismiss()
             }
         }
@@ -168,14 +169,42 @@ class ProfileFragment : Fragment() {
         rv.adapter = adapter
         bleManager = SmartRingBleManager(requireContext(), adapter)
 
+        // Helper per gestire lo stato della UI durante la scansione
+        fun updateScanState(isScanning: Boolean) {
+            if (isScanning) {
+                btnScan?.text = "RICERCA IN CORSO..."
+                btnScan?.isEnabled = false
+                progress?.visibility = View.VISIBLE
+            } else {
+                btnScan?.text = "AVVIA RICERCA"
+                btnScan?.isEnabled = true
+                progress?.visibility = View.GONE
+            }
+        }
+
         btnScan?.setOnClickListener {
             adapter.clear()
             bleManager.startScan()
+            updateScanState(true)
+
+            // Ferma graficamente la ricerca dopo 10 secondi
+            Handler(Looper.getMainLooper()).postDelayed({
+                bleManager.stopScan()
+                updateScanState(false)
+            }, 10000)
         }
 
         dialog.setContentView(sheetView)
         dialog.show()
+
+        // Avvio automatico all'apertura
         bleManager.startScan()
+        updateScanState(true)
+
+        Handler(Looper.getMainLooper()).postDelayed({
+            bleManager.stopScan()
+            updateScanState(false)
+        }, 10000)
     }
 
     override fun onDestroy() {
