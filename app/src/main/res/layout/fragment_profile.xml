@@ -7,7 +7,6 @@
     android:padding="20dp"
     android:background="@color/background_dark">
 
-    <!-- Header originale: Titolo a sinistra e Logout a destra -->
     <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -29,16 +28,15 @@
             android:layout_height="48dp"
             android:layout_alignParentEnd="true"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@android:drawable/ic_lock_power_off"
+            android:src="@drawable/baseline_logout_24"
             app:tint="@color/white" />
     </RelativeLayout>
 
-    <!-- Sezione Icona e Email (come da screenshot) -->
     <ImageView
         android:layout_width="80dp"
         android:layout_height="80dp"
         android:layout_gravity="center"
-        android:src="@android:drawable/ic_menu_report_image"
+        android:src="@drawable/user_svgrepo_com"
         app:tint="@color/white" />
 
     <TextView
@@ -53,7 +51,6 @@
         android:layout_marginTop="16dp"
         android:layout_marginBottom="32dp" />
 
-    <!-- I TRE BOX CLICCABILI (Nello spazio arancione dello screenshot) -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/menuUserInfo"
         android:layout_width="match_parent"
@@ -64,11 +61,15 @@
         android:clickable="true"
         android:focusable="true"
         android:foreground="?attr/selectableItemBackground">
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:padding="20dp"
-            android:text="User Info"
+            android:text="Informazioni Utente"
+            android:drawableStart="@drawable/ic_account_box"
+            android:drawablePadding="16dp"
+            android:drawableTint="@color/white"
             android:textColor="@color/white"
             android:textSize="16sp" />
     </com.google.android.material.card.MaterialCardView>
@@ -83,11 +84,15 @@
         android:clickable="true"
         android:focusable="true"
         android:foreground="?attr/selectableItemBackground">
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:padding="20dp"
-            android:text="Trova Dispositivi"
+            android:text="Trova Nuovi Dispositivi"
+            android:drawableStart="@android:drawable/ic_menu_search"
+            android:drawablePadding="16dp"
+            android:drawableTint="@color/white"
             android:textColor="@color/white"
             android:textSize="16sp" />
     </com.google.android.material.card.MaterialCardView>
@@ -101,11 +106,15 @@
         android:clickable="true"
         android:focusable="true"
         android:foreground="?attr/selectableItemBackground">
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:padding="20dp"
             android:text="Dispositivi Connessi"
+            android:drawableStart="@drawable/baseline_checklist_24"
+            android:drawablePadding="16dp"
+            android:drawableTint="@color/white"
             android:textColor="@color/white"
             android:textSize="16sp" />
     </com.google.android.material.card.MaterialCardView>

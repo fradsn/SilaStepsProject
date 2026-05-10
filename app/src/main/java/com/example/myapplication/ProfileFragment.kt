@@ -13,7 +13,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.myapplication.BLE
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.card.MaterialCardView
-import com.google.firebase.auth.FirebaseAuth // Importante per il logout reale
+import com.google.firebase.auth.FirebaseAuth
 
 class ProfileFragment : Fragment() {
 
@@ -51,19 +51,22 @@ class ProfileFragment : Fragment() {
             showDevicePickerSheet()
         }
 
-        // Tasto Logout: Logica originale ripristinata
+        // NUOVO: Gestione Dispositivi Connessi
+        view.findViewById<MaterialCardView>(R.id.menuConnectedDevices)?.setOnClickListener {
+            if (isBound && bleService != null && bleService!!.isDeviceConnected()) {
+                showConnectedDeviceBottomSheet()
+            } else {
+                Toast.makeText(context, "Nessun dispositivo connesso", Toast.LENGTH_SHORT).show()
+            }
+        }
+
         view.findViewById<ImageButton>(R.id.logout_button)?.setOnClickListener {
-
-            // 1. Logout da Firebase
             FirebaseAuth.getInstance().signOut()
-
-            // 2. Pulizia SharedPreferences (per dimenticare l'utente)
             val sharedPreferences = requireActivity().getSharedPreferences("LoginPrefs", Context.MODE_PRIVATE)
             val editor = sharedPreferences.edit()
             editor.clear()
             editor.apply()
 
-            // 3. Scollegamento BLE (se attivo)
             if (isBound) {
                 try {
                     requireActivity().unbindService(serviceConnection)
@@ -71,7 +74,6 @@ class ProfileFragment : Fragment() {
                 isBound = false
             }
 
-            // 4. Ritorno alla schermata di Login
             val loginIntent = Intent(requireActivity(), Login::class.java)
             loginIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             startActivity(loginIntent)
@@ -79,6 +81,29 @@ class ProfileFragment : Fragment() {
 
             Toast.makeText(context, "Logout effettuato", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun showConnectedDeviceBottomSheet() {
+        val dialog = BottomSheetDialog(requireContext())
+        // Assicurati di creare il file layout_connected_device_sheet.xml come fornito sotto
+        val sheetView = layoutInflater.inflate(R.layout.layout_connected_device_sheet, null)
+
+        val tvName = sheetView.findViewById<TextView>(R.id.tvDeviceName)
+        val tvAddress = sheetView.findViewById<TextView>(R.id.tvDeviceAddress)
+        val btnDisconnect = sheetView.findViewById<Button>(R.id.btnDisconnect)
+
+        // Recuperiamo i dati (Nota: l'indirizzo è quello fisso usato nell'app o potresti estrarlo dal gatt nel Service)
+        tvName.text = "Smart Ring"
+        tvAddress.text = "FE:1C:6D:14:03:0B"
+
+        btnDisconnect?.setOnClickListener {
+            bleService?.disconnectDevice()
+            Toast.makeText(context, "Dispositivo disconnesso", Toast.LENGTH_SHORT).show()
+            dialog.dismiss()
+        }
+
+        dialog.setContentView(sheetView)
+        dialog.show()
     }
 
     private fun showUserInfoBottomSheet() {
