@@ -4,24 +4,20 @@ import android.Manifest
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
-import android.annotation.SuppressLint
 import android.content.*
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Button
-import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 
 class CurrentActivityFragment : Fragment() {
@@ -29,7 +25,6 @@ class CurrentActivityFragment : Fragment() {
     private val TAG = "CurrentActivityFragment"
 
     companion object {
-        var isRingConnectedGlobal: Boolean = false
         var isMeasuringHRGlobal: Boolean = false
         val bpmHistory: MutableList<Float> = mutableListOf()
     }
@@ -37,9 +32,7 @@ class CurrentActivityFragment : Fragment() {
     private lateinit var tvBpmValue: TextView
     private lateinit var tvSpO2Value: TextView
     private lateinit var tvBpValue: TextView
-    private lateinit var tvBleStatusLabel: TextView
     private lateinit var btnToggleHR: Button
-    private lateinit var btnConnectRing: Button
     private lateinit var btnStartSpO2: Button
     private lateinit var btnStartBP: Button
 
@@ -69,8 +62,15 @@ class CurrentActivityFragment : Fragment() {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             bleService = (binder as BLE.LocalBinder).getService()
             bleService?.initialize()
+
+            // Sincronizzazione automatica: se il service è già connesso, aggiorna la UI
+            if (bleService?.isDeviceConnected() == true) {
+                onBleConnected()
+            }
         }
-        override fun onServiceDisconnected(name: ComponentName?) { bleService = null }
+        override fun onServiceDisconnected(name: ComponentName?) {
+            bleService = null
+        }
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -82,37 +82,41 @@ class CurrentActivityFragment : Fragment() {
         bindViews(view)
         startPulseAnimation()
 
-        // Sincronizzazione stato al ritorno nel Fragment
-        if (isRingConnectedGlobal) {
-            onBleConnected()
-            if (isMeasuringHRGlobal) btnToggleHR.text = "STOP BPM"
-        }
-
         requireActivity().bindService(Intent(requireActivity(), BLE::class.java), serviceConnection, Context.BIND_AUTO_CREATE)
 
-        btnConnectRing.setOnClickListener {
-            if (isRingConnectedGlobal) bleService?.disconnectDevice() else checkPermissionsAndConnect()
-        }
-
         btnToggleHR.setOnClickListener {
-            if (isRingConnectedGlobal) {
-                if (isMeasuringHRGlobal) stopAllSensors() else startHR()
-                isMeasuringHRGlobal = !isMeasuringHRGlobal
-                btnToggleHR.text = if (isMeasuringHRGlobal) "STOP BPM" else "START BPM"
+            val isConnected = bleService?.isDeviceConnected() ?: false
+            if (isConnected) {
+                if (isMeasuringHRGlobal) {
+                    stopAllSensors()
+                    isMeasuringHRGlobal = false
+                    btnToggleHR.text = "START BPM"
+                } else {
+                    startHR()
+                    isMeasuringHRGlobal = true
+                    btnToggleHR.text = "STOP BPM"
+                }
+            } else {
+                Toast.makeText(context, "Connetti l'anello dal profilo prima di misurare", Toast.LENGTH_SHORT).show()
             }
         }
 
-        btnStartSpO2.setOnClickListener { if (isRingConnectedGlobal) startSpO2() }
-        btnStartBP.setOnClickListener { if (isRingConnectedGlobal) startBP() }
+        btnStartSpO2.setOnClickListener {
+            if (bleService?.isDeviceConnected() == true) startSpO2()
+            else Toast.makeText(context, "Anello non connesso", Toast.LENGTH_SHORT).show()
+        }
+
+        btnStartBP.setOnClickListener {
+            if (bleService?.isDeviceConnected() == true) startBP()
+            else Toast.makeText(context, "Anello non connesso", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun bindViews(view: View) {
         tvBpmValue = view.findViewById(R.id.tvBpmValue)
         tvSpO2Value = view.findViewById(R.id.tvSpO2Value)
         tvBpValue = view.findViewById(R.id.tvBpValue)
-        tvBleStatusLabel = view.findViewById(R.id.tvBleStatusLabel)
         btnToggleHR = view.findViewById(R.id.btnToggleHR)
-        btnConnectRing = view.findViewById(R.id.btnConnectRing)
         btnStartSpO2 = view.findViewById(R.id.btnStartSpO2)
         btnStartBP = view.findViewById(R.id.btnStartBP)
         pulseRing1 = view.findViewById(R.id.pulseRing1)
@@ -129,7 +133,6 @@ class CurrentActivityFragment : Fragment() {
                         bpmHistory.add(result.value.toFloat())
                         if (bpmHistory.size > 100) bpmHistory.removeAt(0)
 
-                        // Notifica al fragment dei grafici se esistente
                         (parentFragmentManager.findFragmentByTag("charts") as? ChartsFragment)
                             ?.updateHeartRateChart(bpmHistory, result.value)
                     }
@@ -168,28 +171,12 @@ class CurrentActivityFragment : Fragment() {
         }, 600)
     }
 
-    private fun checkPermissionsAndConnect() {
-        val needed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
-        } else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
-        permissionLauncher.launch(needed)
-    }
-
-    private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { perms ->
-        if (perms.values.all { it }) bleService?.connect(RING_MAC)
-    }
-
     private fun onBleConnected() {
-        isRingConnectedGlobal = true
-        tvBleStatusLabel.text = "● Connesso"
-        btnConnectRing.text = "DISCONNETTI"
+        // Logica UI in caso di connessione (es. sblocco tasti se necessario)
     }
 
     private fun onBleDisconnected() {
-        isRingConnectedGlobal = false
         isMeasuringHRGlobal = false
-        tvBleStatusLabel.text = "● Non connesso"
-        btnConnectRing.text = "CONNETTI RING"
         btnToggleHR.text = "START BPM"
         tvBpmValue.text = "--"
     }
@@ -217,7 +204,10 @@ class CurrentActivityFragment : Fragment() {
 
     override fun onStart() {
         super.onStart()
-        val filter = IntentFilter().apply { addAction("BLE_DATA_RX"); addAction("BLE_STATUS_UPDATE") }
+        val filter = IntentFilter().apply {
+            addAction("BLE_DATA_RX")
+            addAction("BLE_STATUS_UPDATE")
+        }
         requireContext().registerReceiver(bleReceiver, filter, if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Context.RECEIVER_EXPORTED else 0)
     }
 

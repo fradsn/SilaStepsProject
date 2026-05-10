@@ -122,7 +122,9 @@ class BLE : Service() {
     private fun broadcastLog(msg: String) {
         sendBroadcast(Intent("BLE_DATA_RX").putExtra("data", msg))
     }
-
+    fun isDeviceConnected(): Boolean {
+        return bluetoothGatt != null
+    }
     override fun onBind(intent: Intent): IBinder = binder
     inner class LocalBinder : Binder() { fun getService(): BLE = this@BLE }
 }

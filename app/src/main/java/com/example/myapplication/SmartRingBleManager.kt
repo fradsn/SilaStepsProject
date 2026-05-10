@@ -7,7 +7,7 @@ import android.bluetooth.le.*
 import android.content.Context
 import androidx.annotation.RequiresPermission
 import java.util.UUID
-
+import android.widget.Toast
 // MODIFICA: Il costruttore ora accetta anche l'adapter
 class SmartRingBleManager(
     private val context: Context,
@@ -38,9 +38,17 @@ class SmartRingBleManager(
     private val buffer = mutableListOf<Byte>()
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_SCAN)
+
     fun startScan() {
-        val bluetoothAdapter =
-            (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
+        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val bluetoothAdapter = bluetoothManager.adapter
+
+        // Controllo se il Bluetooth è attivo
+        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
+            Toast.makeText(context, "Attiva il Bluetooth per cercare i dispositivi", Toast.LENGTH_LONG).show() //
+            return // Blocca la scansione
+        }
+
         scanner = bluetoothAdapter.bluetoothLeScanner ?: return
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
