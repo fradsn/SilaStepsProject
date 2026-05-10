@@ -27,6 +27,11 @@ class CurrentActivityFragment : Fragment() {
     companion object {
         var isMeasuringHRGlobal: Boolean = false
         val bpmHistory: MutableList<Float> = mutableListOf()
+
+        // Variabili per mantenere gli ultimi valori visualizzati tra i cambi di tab
+        var lastBpm: String = "--"
+        var lastSpO2: String = "-- %"
+        var lastBP: String = "-- / --"
     }
 
     private lateinit var tvBpmValue: TextView
@@ -63,7 +68,6 @@ class CurrentActivityFragment : Fragment() {
             bleService = (binder as BLE.LocalBinder).getService()
             bleService?.initialize()
 
-            // Sincronizzazione automatica: se il service è già connesso, aggiorna la UI
             if (bleService?.isDeviceConnected() == true) {
                 onBleConnected()
             }
@@ -81,6 +85,16 @@ class CurrentActivityFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         bindViews(view)
         startPulseAnimation()
+
+        // --- RIPRISTINO STATO UI ---
+        // Sincronizza il testo del pulsante con lo stato globale
+        btnToggleHR.text = if (isMeasuringHRGlobal) "STOP BPM" else "START BPM"
+
+        // Ripristina gli ultimi valori salvati nelle TextView
+        tvBpmValue.text = lastBpm
+        tvSpO2Value.text = lastSpO2
+        tvBpValue.text = lastBP
+        // ---------------------------
 
         requireActivity().bindService(Intent(requireActivity(), BLE::class.java), serviceConnection, Context.BIND_AUTO_CREATE)
 
@@ -129,7 +143,9 @@ class CurrentActivityFragment : Fragment() {
             when (result.type) {
                 "BPM" -> {
                     if (result.value > 0) {
-                        tvBpmValue.text = result.value.toString()
+                        lastBpm = result.value.toString() // Salva valore globale
+                        tvBpmValue.text = lastBpm
+
                         bpmHistory.add(result.value.toFloat())
                         if (bpmHistory.size > 100) bpmHistory.removeAt(0)
 
@@ -137,8 +153,14 @@ class CurrentActivityFragment : Fragment() {
                             ?.updateHeartRateChart(bpmHistory, result.value)
                     }
                 }
-                "SPO2" -> tvSpO2Value.text = "${result.value} %"
-                "BP" -> tvBpValue.text = "${result.sys} / ${result.dia}"
+                "SPO2" -> {
+                    lastSpO2 = "${result.value} %" // Salva valore globale
+                    tvSpO2Value.text = lastSpO2
+                }
+                "BP" -> {
+                    lastBP = "${result.sys} / ${result.dia}" // Salva valore globale
+                    tvBpValue.text = lastBP
+                }
             }
         }
     }
@@ -172,13 +194,14 @@ class CurrentActivityFragment : Fragment() {
     }
 
     private fun onBleConnected() {
-        // Logica UI in caso di connessione (es. sblocco tasti se necessario)
+        // Logica UI in caso di connessione
     }
 
     private fun onBleDisconnected() {
         isMeasuringHRGlobal = false
+        lastBpm = "--"
         btnToggleHR.text = "START BPM"
-        tvBpmValue.text = "--"
+        tvBpmValue.text = lastBpm
     }
 
     private fun startPulseAnimation() {
