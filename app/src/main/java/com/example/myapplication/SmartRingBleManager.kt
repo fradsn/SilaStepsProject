@@ -8,7 +8,11 @@ import android.content.Context
 import androidx.annotation.RequiresPermission
 import java.util.UUID
 
-class SmartRingBleManager(private val context: Context) {
+// MODIFICA: Il costruttore ora accetta anche l'adapter
+class SmartRingBleManager(
+    private val context: Context,
+    private val adapter: DeviceAdapter
+) {
 
     companion object {
         const val SERVICE_UUID = "BE940000-7333-BE46-B7AE-689E71722BD5"
@@ -35,9 +39,9 @@ class SmartRingBleManager(private val context: Context) {
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_SCAN)
     fun startScan() {
-        val adapter =
+        val bluetoothAdapter =
             (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
-        scanner = adapter.bluetoothLeScanner ?: return
+        scanner = bluetoothAdapter.bluetoothLeScanner ?: return
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
@@ -51,7 +55,11 @@ class SmartRingBleManager(private val context: Context) {
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
+            // AGGIUNTA: Notifica il callback originale (se esiste)
             callback?.onDeviceFound(result.device, result.rssi)
+
+            // AGGIUNTA: Inserisce il dispositivo direttamente nell'adapter della lista
+            adapter.addDevice(result.device)
         }
     }
 
@@ -78,8 +86,8 @@ class SmartRingBleManager(private val context: Context) {
     private fun sendPacket(cmdId: Int, key: Int, payload: ByteArray = byteArrayOf()) {
         val packet = SmartRingProtocol.buildPacket(cmdId.toByte(), key.toByte(), payload)
         val char = gatt
-            ?.getService(Constants.SERVICE_UUID)
-            ?.getCharacteristic(Constants.CHAR_COMMAND_CONTROL)
+            ?.getService(UUID.fromString(SERVICE_UUID)) // Nota: Usato SERVICE_UUID locale
+            ?.getCharacteristic(UUID.fromString(CHAR_CONTROL))
             ?: return
         char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
         char.value = packet
@@ -90,7 +98,6 @@ class SmartRingBleManager(private val context: Context) {
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun startHeartRate() {
-        // Qui solo il comando di start dal protocollo nuovo
         sendPacket(0x04, 0x0E, byteArrayOf(0x00, 0x01))
     }
 
@@ -101,10 +108,7 @@ class SmartRingBleManager(private val context: Context) {
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun stopAllMeasurements() {
-        // Se vuoi replicare esattamente la sequenza della versione vecchia, puoi
-        // aggiungere qui eventuali comandi di stop specifici.
-        // Per ora mandiamo solo un ACK neutro / idle se serve.
-        // (adatta se SmartRingProtocol richiede altro)
+        // Implementazione stop se necessaria
     }
 
     private val gattCallback = object : BluetoothGattCallback() {
@@ -124,10 +128,6 @@ class SmartRingBleManager(private val context: Context) {
                     callback?.onDisconnected()
                 }
             }
-        }
-
-        override fun onMtuChanged(g: BluetoothGatt, mtu: Int, status: Int) {
-            // opzionale
         }
 
         @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
@@ -170,6 +170,7 @@ class SmartRingBleManager(private val context: Context) {
                 val packetBytes = arr.copyOfRange(0, length)
                 repeat(length) { buffer.removeAt(0) }
 
+                // Assicurati che le classi SmartRing o SmartRingProtocol esistano
                 val parsed = SmartRing.parsePacket(packetBytes) ?: continue
                 routePacket(parsed)
             }
@@ -183,18 +184,11 @@ class SmartRingBleManager(private val context: Context) {
                         val measType = p.payload[0].toInt() and 0xFF
                         val measResult = p.payload[1].toInt() and 0xFF
                         when (measType) {
-                            0x00 -> {
-                                callback?.onHeartRateReceived(measResult)
-                            }
+                            0x00 -> callback?.onHeartRateReceived(measResult)
                             0x01 -> {
                                 val systolic = measResult
-                                val diastolic =
-                                    if (p.payload.size > 2)
-                                        p.payload[2].toInt() and 0xFF else 0
-                                callback?.onBloodPressureReceived(
-                                    systolic,
-                                    diastolic
-                                )
+                                val diastolic = if (p.payload.size > 2) p.payload[2].toInt() and 0xFF else 0
+                                callback?.onBloodPressureReceived(systolic, diastolic)
                             }
                         }
                     }

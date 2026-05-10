@@ -3,38 +3,28 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="24dp"
-    android:background="@color/card_surface">
+    android:padding="20dp"
+    android:background="@color/background_dark">
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Dispositivi Vicini"
+        android:text="Ricerca Dispositivi"
         android:textColor="@color/white"
         android:textSize="20sp"
-        android:textStyle="bold" />
+        android:textStyle="bold"
+        android:layout_marginBottom="16dp"/>
 
-    <ProgressBar
-        android:id="@+id/scanProgress"
-        style="?android:attr/progressBarStyleHorizontal"
+    <Button
+        android:id="@+id/btnScan"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:indeterminate="true"
-        android:layout_marginTop="8dp"
-        android:visibility="gone" />
+        android:text="Avvia Scansione"
+        android:layout_marginBottom="16dp" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvDevices"
         android:layout_width="match_parent"
-        android:layout_height="300dp"
-        android:layout_marginTop="16dp" />
-
-    <Button
-        android:id="@+id/btnStartScan"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="Cerca Dispositivi"
-        android:backgroundTint="@color/orange_primary" />
+        android:layout_height="300dp" />
 
 </LinearLayout>
