@@ -62,12 +62,11 @@ class SmartRingBleManager(
     }
 
     private val scanCallback = object : ScanCallback() {
+        // In SmartRingBleManager.kt
         override fun onScanResult(callbackType: Int, result: ScanResult) {
-            // AGGIUNTA: Notifica il callback originale (se esiste)
-            callback?.onDeviceFound(result.device, result.rssi)
-
-            // AGGIUNTA: Inserisce il dispositivo direttamente nell'adapter della lista
-            adapter.addDevice(result.device)
+            val name = result.device.name ?: ""
+            val isShimmer = name.startsWith("Shimmer", ignoreCase = true)
+            adapter.addDevice(result.device, isShimmer)
         }
     }
 

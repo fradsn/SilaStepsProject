@@ -1,15 +1,20 @@
 package com.example.myapplication
-
+import com.example.myapplication.ShimmerClassicManager
+import android.Manifest
 import android.content.*
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
+import androidx.annotation.RequiresPermission
+import androidx.core.app.ActivityCompat
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -24,8 +29,49 @@ class ProfileFragment : Fragment() {
     private var isBound = false
     private lateinit var bleManager: SmartRingBleManager
 
+    private var shimmerManager: ShimmerClassicManager? = null
+
     // Riferimento dinamico alla TextView della batteria nel BottomSheet
     private var tvBatteryLevelInSheet: TextView? = null
+    // All'interno di ProfileFragment.kt
+    private val shimmerListener = object : ShimmerClassicManager.ShimmerListener {
+        override fun onConnected() {
+            activity?.runOnUiThread {
+                Toast.makeText(context, "Shimmer Connesso!", Toast.LENGTH_SHORT).show()
+            }
+            // Una volta connesso, avviamo il setup (frequenza, sensori, ecc.)
+            shimmerManager?.setupShimmer()
+        }
+
+        override fun onDisconnected() {
+            activity?.runOnUiThread {
+                Toast.makeText(context, "Shimmer Disconnesso", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        override fun onSetup() {
+            activity?.runOnUiThread {
+                Toast.makeText(context, "Shimmer Pronto!", Toast.LENGTH_SHORT).show()
+            }
+            // Avviamo lo streaming dei dati
+            shimmerManager?.startStreaming()
+        }
+
+        override fun onError(msg: String) {
+            activity?.runOnUiThread {
+                Log.e("SHIMMER", "Errore: $msg")
+            }
+        }
+
+        override fun onSampleReceived(sample: ImuSample) {
+            // Qui arrivano i dati dell'accelerometro e del giroscopio
+            // Puoi decidere di aggiornare la UI o inviarli a un altro componente
+            activity?.runOnUiThread {
+                // Se hai una console di debug in prova.xml, aggiornala qui
+                // tvShimmerConsole?.text = "AccZ: ${sample.accZ}"
+            }
+        }
+    }
 
     // Ricevitore per i dati provenienti dal servizio BLE
     private val bleReceiver = object : BroadcastReceiver() {
@@ -190,6 +236,7 @@ class ProfileFragment : Fragment() {
         dialog.show()
     }
 
+    @RequiresPermission(Manifest.permission.BLUETOOTH_SCAN)
     private fun showDevicePickerSheet() {
         val dialog = BottomSheetDialog(requireContext())
         val sheetView = layoutInflater.inflate(R.layout.layout_find_devices_sheet, null)
@@ -197,12 +244,23 @@ class ProfileFragment : Fragment() {
         val btnScan = sheetView.findViewById<Button>(R.id.btnScan)
         val progress = sheetView.findViewById<ProgressBar>(R.id.scanProgress)
 
-        val adapter = DeviceAdapter { device ->
-            if (isBound && bleService != null) {
-                bleService?.connect(device.address)
-                Toast.makeText(context, "Connessione a: ${device.name ?: "Anello"}", Toast.LENGTH_SHORT).show()
+        val adapter = DeviceAdapter { device, isShimmer ->
+            if (isShimmer) {
+                // --- LOGICA SHIMMER (Bluetooth Classic) ---
+
+                // Inizializziamo il manager per lo Shimmer usando il listener del Fragment
+                shimmerManager = ShimmerClassicManager(requireContext(), device.address, shimmerListener)
+                shimmerManager?.connect()
+
                 bleManager.stopScan()
                 dialog.dismiss()
+            } else {
+                // --- LOGICA SMART RING (BLE) ---
+                if (isBound && bleService != null) {
+                    bleService?.connect(device.address)
+                    bleManager.stopScan()
+                    dialog.dismiss()
+                }
             }
         }
 
