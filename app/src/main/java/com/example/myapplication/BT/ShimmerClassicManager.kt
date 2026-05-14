@@ -66,7 +66,9 @@ class ShimmerClassicManager(
     private var setup = false
     private var streaming = false
     private val frameBuffer = mutableListOf<Byte>()
-
+    // In ShimmerClassicManager.kt
+    fun isConnected(): Boolean = connected
+    fun getAddress(): String = macAddress
     fun connect() {
         val adapter = BluetoothAdapter.getDefaultAdapter()
         val device = adapter.getRemoteDevice(macAddress)

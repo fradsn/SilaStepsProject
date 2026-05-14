@@ -17,15 +17,79 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Dispositivo Connesso"
+        android:text="Dispositivi Connessi"
         android:textColor="@color/white"
         android:textSize="20sp"
         android:textStyle="bold"
         android:layout_marginBottom="16dp"/>
 
     <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cardSmartRing"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:visibility="gone"
+        app:cardBackgroundColor="@color/card_surface"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="0dp"
+        android:layout_marginBottom="12dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="20dp"
+            android:gravity="center_vertical">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvRingName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Smart Ring"
+                    android:textColor="@color/white"
+                    android:textSize="16sp"
+                    android:textStyle="bold"/>
+
+                <TextView
+                    android:id="@+id/tvRingAddress"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="#B3FFFFFF"
+                    android:textSize="14sp"
+                    android:layout_marginTop="2dp"/>
+
+                <TextView
+                    android:id="@+id/tvBatteryLevel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Batteria: --%"
+                    android:textColor="#4CAF50"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:layout_marginTop="8dp" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnDisconnectRing"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="SCOLLEGA"
+                android:textColor="#FF5252"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cardShimmer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
         app:cardBackgroundColor="@color/card_surface"
         app:cardCornerRadius="16dp"
         app:cardElevation="0dp">
@@ -44,36 +108,25 @@
                 android:orientation="vertical">
 
                 <TextView
-                    android:id="@+id/tvDeviceName"
+                    android:id="@+id/tvShimmerName"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Smart Ring"
+                    android:text="Shimmer3"
                     android:textColor="@color/white"
                     android:textSize="16sp"
                     android:textStyle="bold"/>
 
                 <TextView
-                    android:id="@+id/tvDeviceAddress"
+                    android:id="@+id/tvShimmerAddress"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="FE:1C:6D:14:03:0B"
                     android:textColor="#B3FFFFFF"
                     android:textSize="14sp"
-                    android:layout_marginTop="4dp"/>
-
-                <TextView
-                    android:id="@+id/tvBatteryLevel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Batteria: --%"
-                    android:textColor="#4CAF50"
-                    android:textSize="14sp"
-                    android:textStyle="bold"
-                    android:layout_marginTop="8dp" />
+                    android:layout_marginTop="2dp"/>
             </LinearLayout>
 
             <Button
-                android:id="@+id/btnDisconnect"
+                android:id="@+id/btnDisconnectShimmer"
                 style="@style/Widget.MaterialComponents.Button.TextButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
