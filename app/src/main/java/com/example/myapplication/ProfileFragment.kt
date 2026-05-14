@@ -69,6 +69,7 @@ class ProfileFragment : Fragment() {
             activity?.runOnUiThread {
                 // Se hai una console di debug in prova.xml, aggiornala qui
                 // tvShimmerConsole?.text = "AccZ: ${sample.accZ}"
+                Log.d("SHIMMER DATA", "acc: ${sample.accX},${sample.accY},${sample.accZ}; gyro: ${sample.gyroX},${sample.gyroY},${sample.gyroZ}")
             }
         }
     }
