@@ -102,7 +102,7 @@ class ShimmerClassicManager(
         thread {
             val commands = listOf(
                 // 1. Sampling rate = 1 Hz (32768 / 1 = 32768 -> 0x8000 -> LE: 00 80)
-                byteArrayOf(CMD_SET_SR, 0x00, 0x80.toByte()),
+                byteArrayOf(CMD_SET_SR, 0x90.toByte(), 0x02.toByte()),
 
                 // 2. Sensors: Accel Low Noise (0x80) + Gyro (0x40) = 0xC0
                 byteArrayOf(CMD_SET_SENSORS, 0xC0.toByte(), 0x00, 0x00),
@@ -247,8 +247,8 @@ class ShimmerClassicManager(
         val calGyroZ = -gz
 
         // Log di controllo: ora dovresti vedere Z vicino a 1.0 o -1.0
-        Log.d("SHIMMER_FINAL", "ACC [m/s^2]: X=%.3f, Y=%.3f, Z=%.3f".format(calAccX, calAccY, calAccZ))
-        Log.d("SHIMMER_FINAL", "GYRO [°/s]: X=%.3f, Y=%.3f, Z=%.3f".format(calGyroX, calGyroY, calGyroZ))
+//        Log.d("SHIMMER_FINAL", "ACC [m/s^2]: X=%.3f, Y=%.3f, Z=%.3f".format(calAccX, calAccY, calAccZ))
+//        Log.d("SHIMMER_FINAL", "GYRO [°/s]: X=%.3f, Y=%.3f, Z=%.3f".format(calGyroX, calGyroY, calGyroZ))
 
         listener.onSampleReceived(ImuSample(calAccX, calAccY, calAccZ, calGyroX, calGyroY, calGyroZ))
     }

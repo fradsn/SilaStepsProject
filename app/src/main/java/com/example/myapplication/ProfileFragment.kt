@@ -61,7 +61,7 @@ class ProfileFragment : Fragment() {
         }
 
         override fun onSampleReceived(sample: ImuSample) {
-            Log.d("SHIMMER DATA", "AccZ: ${sample.accZ}")
+            Log.d("SHIMMER DATA", "AccX: ${sample.accX}, AccY: ${sample.accY}, AccZ: ${sample.accZ}; GyroX: ${sample.gyroX}, GyroY: ${sample.gyroY}, GyroZ: ${sample.gyroZ}")
         }
     }
 
