@@ -1,69 +1,37 @@
 package com.example.myapplication
 
-import com.example.myapplication.ShimmerClassicManager
-import com.example.myapplication.ImuSample
 import android.Manifest
-import android.content.*
+import android.content.BroadcastReceiver
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.ServiceConnection
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.*
+import android.widget.Button
+import android.widget.ProgressBar
+import android.widget.TextView
+import android.widget.Toast
+import androidx.annotation.RequiresApi
 import androidx.annotation.RequiresPermission
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.example.myapplication.BLE
-import com.example.myapplication.Decoder
 import com.google.android.material.bottomsheet.BottomSheetDialog
-import com.google.android.material.card.MaterialCardView
 import com.google.firebase.auth.FirebaseAuth
 
-class ProfileFragment : Fragment() {
+class ProfileFragment : Fragment(), MotionSessionManager.Observer {
 
     private var bleService: BLE? = null
     private var isBound = false
     private lateinit var bleManager: SmartRingBleManager
 
-    // Rendiamo lo shimmerManager statico o accessibile per controllarne lo stato
-    private var shimmerManager: ShimmerClassicManager? = null
-
     private var tvBatteryLevelInSheet: TextView? = null
-
-    private val shimmerListener = object : ShimmerClassicManager.ShimmerListener {
-        override fun onConnected() {
-            activity?.runOnUiThread {
-                Toast.makeText(context, "Shimmer Connesso!", Toast.LENGTH_SHORT).show()
-            }
-            shimmerManager?.setupShimmer()
-        }
-
-        override fun onDisconnected() {
-            activity?.runOnUiThread {
-                Toast.makeText(context, "Shimmer Disconnesso", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        override fun onSetup() {
-            activity?.runOnUiThread {
-                Toast.makeText(context, "Shimmer Pronto!", Toast.LENGTH_SHORT).show()
-            }
-            shimmerManager?.startStreaming()
-        }
-
-        override fun onError(msg: String) {
-            activity?.runOnUiThread { Log.e("SHIMMER", "Errore: $msg") }
-        }
-
-        override fun onSampleReceived(sample: ImuSample) {
-            Log.d("SHIMMER DATA", "AccX: ${sample.accX}, AccY: ${sample.accY}, AccZ: ${sample.accZ}; GyroX: ${sample.gyroX}, GyroY: ${sample.gyroY}, GyroZ: ${sample.gyroZ}")
-        }
-    }
 
     private val bleReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -83,31 +51,45 @@ class ProfileFragment : Fragment() {
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             bleService = (binder as? BLE.LocalBinder)?.getService()
+            bleService?.initialize()
             isBound = true
         }
+
         override fun onServiceDisconnected(name: ComponentName?) {
             bleService = null
             isBound = false
         }
     }
 
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
         return inflater.inflate(R.layout.fragment_profile, container, false)
     }
-
+    @androidx.annotation.RequiresPermission(
+        android.Manifest.permission.BLUETOOTH_SCAN
+    )
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        MotionSessionManager.initialize(requireContext())
+        MotionSessionManager.addObserver(this)
         val intent = Intent(requireActivity(), BLE::class.java)
         requireActivity().bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
 
-        view.findViewById<MaterialCardView>(R.id.menuUserInfo)?.setOnClickListener { showUserInfoBottomSheet() }
-        view.findViewById<MaterialCardView>(R.id.menuFindDevices)?.setOnClickListener { showDevicePickerSheet() }
+        view.findViewById<View>(R.id.menuUserInfo)?.setOnClickListener {
+            showUserInfoBottomSheet()
+        }
 
-        // MODIFICA: Ora controlliamo entrambi i dispositivi
-        view.findViewById<MaterialCardView>(R.id.menuConnectedDevices)?.setOnClickListener {
+        view.findViewById<View>(R.id.menuFindDevices)?.setOnClickListener  {
+            showDevicePickerSheet()
+        }
+
+        view.findViewById<View>(R.id.menuConnectedDevices)?.setOnClickListener {
             val ringConnected = bleService?.isDeviceConnected() == true
-            val shimmerConnected = shimmerManager?.isConnected() == true
+            val shimmerConnected = MotionSessionManager.isShimmerConnected()
 
             if (ringConnected || shimmerConnected) {
                 if (ringConnected) bleService?.requestBatteryLevel()
@@ -117,12 +99,16 @@ class ProfileFragment : Fragment() {
             }
         }
 
-        view.findViewById<ImageButton>(R.id.logout_button)?.setOnClickListener {
+        view.findViewById<View>(R.id.logout_button)?.setOnClickListener {
             FirebaseAuth.getInstance().signOut()
+
             if (isBound) {
                 requireActivity().unbindService(serviceConnection)
                 isBound = false
             }
+
+            MotionSessionManager.removeObserver(this)
+
             startActivity(Intent(requireActivity(), Login::class.java))
             requireActivity().finish()
         }
@@ -132,18 +118,15 @@ class ProfileFragment : Fragment() {
         val dialog = BottomSheetDialog(requireContext())
         val sheetView = layoutInflater.inflate(R.layout.layout_connected_device_sheet, null)
 
-        // Riferimenti Smart Ring
-        val cardRing = sheetView.findViewById<MaterialCardView>(R.id.cardSmartRing)
+        val cardRing = sheetView.findViewById<View>(R.id.cardSmartRing)
         val tvRingAddress = sheetView.findViewById<TextView>(R.id.tvRingAddress)
         val btnDisconnectRing = sheetView.findViewById<Button>(R.id.btnDisconnectRing)
-        tvBatteryLevelInSheet = sheetView.findViewById<TextView>(R.id.tvBatteryLevel)
+        tvBatteryLevelInSheet = sheetView.findViewById(R.id.tvBatteryLevel)
 
-        // Riferimenti Shimmer
-        val cardShimmer = sheetView.findViewById<MaterialCardView>(R.id.cardShimmer)
+        val cardShimmer = sheetView.findViewById<View>(R.id.cardShimmer)
         val tvShimmerAddress = sheetView.findViewById<TextView>(R.id.tvShimmerAddress)
         val btnDisconnectShimmer = sheetView.findViewById<Button>(R.id.btnDisconnectShimmer)
 
-        // Logica Visibilità Smart Ring
         if (bleService?.isDeviceConnected() == true) {
             cardRing.visibility = View.VISIBLE
             tvRingAddress.text = "Connesso (BLE)"
@@ -156,12 +139,13 @@ class ProfileFragment : Fragment() {
             cardRing.visibility = View.GONE
         }
 
-        // Logica Visibilità Shimmer
-        if (shimmerManager?.isConnected() == true) {
+        if (MotionSessionManager.isShimmerConnected()) {
             cardShimmer.visibility = View.VISIBLE
-            tvShimmerAddress.text = shimmerManager?.getAddress() ?: "Connesso (BT Classic)"
+            tvShimmerAddress.text =
+                MotionSessionManager.getShimmerAddress() ?: "Connesso (BT Classic)"
+
             btnDisconnectShimmer.setOnClickListener {
-                shimmerManager?.disconnect()
+                MotionSessionManager.disconnectShimmer()
                 cardShimmer.visibility = View.GONE
                 if (cardRing.visibility == View.GONE) dialog.dismiss()
             }
@@ -185,51 +169,110 @@ class ProfileFragment : Fragment() {
     private fun showDevicePickerSheet() {
         val dialog = BottomSheetDialog(requireContext())
         val sheetView = layoutInflater.inflate(R.layout.layout_find_devices_sheet, null)
+
         val rv = sheetView.findViewById<RecyclerView>(R.id.rvDevices)
+        val btnScan = sheetView.findViewById<Button>(R.id.btnScan)
+        val scanProgress = sheetView.findViewById<ProgressBar>(R.id.scanProgress)
 
         val adapter = DeviceAdapter { device, isShimmer ->
             if (isShimmer) {
-                // Inizializza manager Shimmer
-                shimmerManager = ShimmerClassicManager(requireContext(), device.address, shimmerListener)
-                shimmerManager?.connect()
+                MotionSessionManager.connectToShimmer(requireContext(), device.address)
+                Toast.makeText(
+                    requireContext(),
+                    "Connessione a Shimmer in corso...",
+                    Toast.LENGTH_SHORT
+                ).show()
             } else {
-                // Connetti Smart Ring
-                if (isBound) bleService?.connect(device.address)
+                if (isBound) {
+                    bleService?.connect(device.address)
+                    Toast.makeText(
+                        requireContext(),
+                        "Connessione Smart Ring in corso...",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             }
+
             bleManager.stopScan()
+            scanProgress.visibility = View.GONE
             dialog.dismiss()
         }
 
         rv.layoutManager = LinearLayoutManager(requireContext())
         rv.adapter = adapter
+
         bleManager = SmartRingBleManager(requireContext(), adapter)
 
-        // ... (resto della logica scan identica)
+        btnScan.setOnClickListener {
+            adapter.clear()
+            scanProgress.visibility = View.VISIBLE
+            bleManager.startScan()
+
+            rv.postDelayed({
+                scanProgress.visibility = View.GONE
+            }, 10000L)
+        }
+
         bleManager.startScan()
+        scanProgress.visibility = View.VISIBLE
+
+        rv.postDelayed({
+            scanProgress.visibility = View.GONE
+        }, 10000L)
+
+        dialog.setOnDismissListener {
+            bleManager.stopScan()
+            scanProgress.visibility = View.GONE
+        }
+
         dialog.setContentView(sheetView)
         dialog.show()
     }
-
-    // ... (UserInfoBottomSheet e metodi Lifecycle onStart/onStop identici)
 
     private fun showUserInfoBottomSheet() {
-        // (Codice esistente per UserInfo...)
         val dialog = BottomSheetDialog(requireContext())
         val sheetView = layoutInflater.inflate(R.layout.dialog_user_info, null)
-        // ... (setup spinner e salvataggio)
         dialog.setContentView(sheetView)
         dialog.show()
     }
 
+    override fun onMotionStateChanged(state: MotionUiState) {
+        if (!isAdded) return
+
+        val error = state.lastError
+        if (!error.isNullOrBlank()) {
+            activity?.runOnUiThread {
+                Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onStart() {
         super.onStart()
         val filter = IntentFilter("BLE_DATA_RX")
-        requireContext().registerReceiver(bleReceiver, filter, if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Context.RECEIVER_EXPORTED else 0)
+        requireContext().registerReceiver(
+            bleReceiver,
+            filter,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                Context.RECEIVER_EXPORTED
+            } else {
+                0
+            }
+        )
     }
 
     override fun onStop() {
         super.onStop()
-        try { requireContext().unregisterReceiver(bleReceiver) } catch (e: Exception) { }
+        try {
+            requireContext().unregisterReceiver(bleReceiver)
+        } catch (_: Exception) {
+        }
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        MotionSessionManager.removeObserver(this)
     }
 
     override fun onDestroy() {

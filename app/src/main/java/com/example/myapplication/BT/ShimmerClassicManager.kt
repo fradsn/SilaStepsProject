@@ -101,32 +101,29 @@ class ShimmerClassicManager(
 
         thread {
             val commands = listOf(
-                // 1. Sampling rate = 1 Hz (32768 / 1 = 32768 -> 0x8000 -> LE: 00 80)
-                byteArrayOf(CMD_SET_SR, 0x90.toByte(), 0x02.toByte()),
-
-                // 2. Sensors: Accel Low Noise (0x80) + Gyro (0x40) = 0xC0
                 byteArrayOf(CMD_SET_SENSORS, 0xC0.toByte(), 0x00, 0x00),
-
-                // 3. Accel range = ±4g (Valore comando 1)
                 byteArrayOf(CMD_SET_ACCEL_RANGE, 0x01.toByte()),
-
-                // 4. Gyro range = 500 dps (Valore comando 1)
                 byteArrayOf(CMD_SET_GYRO_RANGE, 0x01.toByte())
             )
 
             for (cmd in commands) {
                 send(cmd)
                 val ack = readAck()
+                val ackHex = ack?.let { "%02X".format(it.toInt() and 0xFF) } ?: "null"
+
                 if (ack != 0xFF.toByte()) {
-                    Handler(Looper.getMainLooper()).post { listener.onError("Errore setup: No ACK per ${"%02X".format(cmd[0])}") }
+                    Handler(Looper.getMainLooper()).post {
+                        listener.onError("Errore setup: cmd=${"%02X".format(cmd[0])}, ack=$ackHex")
+                    }
                     return@thread
                 }
+
                 Thread.sleep(100)
             }
 
             setup = true
             Handler(Looper.getMainLooper()).post {
-                Toast.makeText(context, "Shimmer configurato (1Hz, ±4g, 500dps)", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Shimmer configurato", Toast.LENGTH_SHORT).show()
                 listener.onSetup()
             }
         }
@@ -247,10 +244,11 @@ class ShimmerClassicManager(
         val calGyroZ = -gz
 
         // Log di controllo: ora dovresti vedere Z vicino a 1.0 o -1.0
-//        Log.d("SHIMMER_FINAL", "ACC [m/s^2]: X=%.3f, Y=%.3f, Z=%.3f".format(calAccX, calAccY, calAccZ))
-//        Log.d("SHIMMER_FINAL", "GYRO [°/s]: X=%.3f, Y=%.3f, Z=%.3f".format(calGyroX, calGyroY, calGyroZ))
+        Log.d("SHIMMER_FINAL", "ACC [m/s^2]: X=%.3f, Y=%.3f, Z=%.3f".format(calAccX, calAccY, calAccZ))
+        Log.d("SHIMMER_FINAL", "GYRO [°/s]: X=%.3f, Y=%.3f, Z=%.3f".format(calGyroX, calGyroY, calGyroZ))
 
         listener.onSampleReceived(ImuSample(calAccX, calAccY, calAccZ, calGyroX, calGyroY, calGyroZ))
+
     }
 
     private fun calibrate(raw: DoubleArray, align: Array<DoubleArray>, sensitivity: Double, offset: Double): DoubleArray {

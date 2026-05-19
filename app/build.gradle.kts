@@ -53,7 +53,7 @@ dependencies {
     implementation(libs.androidx.compose.material3.adaptive.navigation.suite)
     implementation(libs.androidx.appcompat)
     implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
-
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.constraintlayout:constraintlayout:2.2.1")
 
     // Firebase — scritto direttamente, niente Version Catalog
