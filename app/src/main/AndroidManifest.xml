@@ -10,7 +10,6 @@
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.INTERNET" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
     <uses-feature android:name="android.hardware.bluetooth" android:required="true" />
 
@@ -23,18 +22,18 @@
         android:theme="@style/Theme.MyApplication"
         android:usesCleartextTraffic="true">
 
-        <activity android:name=".Login" android:exported="true">
+        <activity android:name=".UI.Login" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <activity android:name=".RegisterActivity" android:exported="false" />
-        <activity android:name=".UserProfileActivity" android:exported="false" />
-        <activity android:name=".ResetActivity" android:exported="false" />
+        <activity android:name=".UI.RegisterActivity" android:exported="false" />
+        <activity android:name=".UI.UserProfileActivity" android:exported="false" />
+        <activity android:name=".UI.ResetActivity" android:exported="false" />
 
-        <service android:name=".BLE" android:enabled="true" android:exported="false" />
+        <service android:name=".BT.ring.BLE" android:enabled="true" android:exported="false" />
 
     </application>
 </manifest>
