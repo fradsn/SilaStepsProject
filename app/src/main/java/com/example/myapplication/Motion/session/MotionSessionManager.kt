@@ -87,7 +87,7 @@ object MotionSessionManager : MotionPipeline.Listener {
         shimmerManager?.disconnect()
         resetActivityCounts()
 
-        shimmerManager = ShimmerClassicManager(
+        shimmerManager = ShimmerClassicManager.getInstance(
             context = context.applicationContext,
             macAddress = macAddress,
             listener = motionPipeline ?: return
