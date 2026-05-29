@@ -45,7 +45,7 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
     private lateinit var tvBpmValue: TextView
     private lateinit var tvSpO2Value: TextView
     private lateinit var tvBpValue: TextView
-    private lateinit var tvLastReading: TextView
+
     private lateinit var btnToggleHR: Button
     private lateinit var btnStartSpO2: Button
     private lateinit var btnStartBP: Button
@@ -53,9 +53,6 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
     private lateinit var tvActivityLabel: TextView
     private lateinit var tvConfidenceValue: TextView
     private lateinit var progressConfidence: ProgressBar
-    private lateinit var tvDuration: TextView
-    private lateinit var tvSteps: TextView
-    private lateinit var tvCalories: TextView
     private lateinit var ivActivityIcon: ImageView
 
     private lateinit var pulseRing1: View
@@ -78,7 +75,7 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
             val minutes = totalSeconds / 60
             val seconds = totalSeconds % 60
 
-            tvDuration.text = String.format("%dm %02ds", minutes, seconds)
+
             durationHandler.postDelayed(this, 1000L)
         }
     }
@@ -123,7 +120,7 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        return inflater.inflate(R.layout.prova, container, false)
+        return inflater.inflate(R.layout.activity_monitor, container, false)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -150,9 +147,6 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
         tvActivityLabel = view.findViewById(R.id.tvActivityLabel)
         tvConfidenceValue = view.findViewById(R.id.tvConfidenceValue)
         progressConfidence = view.findViewById(R.id.progressConfidence)
-        tvDuration = view.findViewById(R.id.tvDuration)
-        tvSteps = view.findViewById(R.id.tvSteps)
-        tvCalories = view.findViewById(R.id.tvCalories)
         ivActivityIcon = view.findViewById(R.id.ivActivityIcon)
 
         pulseRing1 = view.findViewById(R.id.pulseRing1)
@@ -162,7 +156,6 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
         tvBpmValue = view.findViewById(R.id.tvBpmValue)
         tvSpO2Value = view.findViewById(R.id.tvSpO2Value)
         tvBpValue = view.findViewById(R.id.tvBpValue)
-        tvLastReading = view.findViewById(R.id.tvLastReading)
 
         btnToggleHR = view.findViewById(R.id.btnToggleHR)
         btnStartSpO2 = view.findViewById(R.id.btnStartSpO2)
@@ -175,9 +168,7 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
         tvSpO2Value.text = lastSpO2
         tvBpValue.text = lastBP
 
-        tvLastReading.text =
-            if (lastBpm == "--") "Nessuna lettura disponibile"
-            else "Ultima lettura: $lastBpm BPM"
+
     }
 
     private fun setupSmartRingButtons() {
@@ -227,17 +218,6 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
         motionStreaming = state.streaming
         currentSessionStartMillis = state.sessionStartMillis
 
-        if (motionStreaming && currentSessionStartMillis > 0L) {
-            startDurationTimer()
-        } else {
-            stopDurationTimer()
-            if (state.currentActivity == "Disconnected" || state.currentActivity == "Waiting...") {
-                tvDuration.text = "0m 00s"
-            }
-        }
-
-        tvSteps.text = "0"
-        tvCalories.text = "0"
         setActivityIcon(state.currentActivity)
     }
 
@@ -248,7 +228,7 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
                     if (result.value > 0) {
                         lastBpm = result.value.toString()
                         tvBpmValue.text = lastBpm
-                        tvLastReading.text = "Ultima lettura: ${result.value} BPM"
+
 
                         bpmHistory.add(result.value.toFloat())
                         if (bpmHistory.size > 100) bpmHistory.removeAt(0)
@@ -351,7 +331,6 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
         lastBpm = "--"
         btnToggleHR.text = "START BPM"
         tvBpmValue.text = lastBpm
-        tvLastReading.text = "Nessuna lettura disponibile"
     }
 
     private fun startDurationTimer() {

@@ -9,7 +9,7 @@
     <!-- Contenuto della schermata (il tuo layout prova.xml) -->
     <include
         android:id="@+id/includeContent"
-        layout="@layout/prova"
+        layout="@layout/activity_monitor"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_marginBottom="72dp" />

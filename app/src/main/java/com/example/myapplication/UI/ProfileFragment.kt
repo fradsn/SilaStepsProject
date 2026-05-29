@@ -1,6 +1,7 @@
 package com.example.myapplication.UI
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
@@ -13,10 +14,14 @@ import android.os.IBinder
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.EditText
 import android.widget.ProgressBar
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.annotation.RequiresPermission
 import androidx.fragment.app.Fragment
@@ -40,6 +45,60 @@ class ProfileFragment : Fragment(), MotionSessionManager.Observer {
 
     private var tvBatteryLevelInSheet: TextView? = null
 
+    private val requestBlePermissions = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        val allGranted = results.values.all { it }
+        if (allGranted) {
+            @SuppressLint("MissingPermission")
+            showDevicePickerSheet()
+        } else {
+            Toast.makeText(
+                requireContext(),
+                "Permessi Bluetooth necessari per la scansione",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+    private fun hasBlePermissions(): Boolean {
+        val perms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            arrayOf(
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_CONNECT
+            )
+        } else {
+            arrayOf(
+                Manifest.permission.BLUETOOTH,
+                Manifest.permission.BLUETOOTH_ADMIN,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            )
+        }
+        return perms.all {
+            requireContext().checkSelfPermission(it) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_SCAN)
+    private fun requestBlePermissionsIfNeeded() {
+        if (hasBlePermissions()) {
+            showDevicePickerSheet()
+            return
+        }
+
+        val perms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            arrayOf(
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_CONNECT
+            )
+        } else {
+            arrayOf(
+                Manifest.permission.BLUETOOTH,
+                Manifest.permission.BLUETOOTH_ADMIN,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            )
+        }
+        requestBlePermissions.launch(perms)
+    }
     private val bleReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == "BLE_DATA_RX") {
@@ -91,7 +150,7 @@ class ProfileFragment : Fragment(), MotionSessionManager.Observer {
         }
 
         view.findViewById<View>(R.id.menuFindDevices)?.setOnClickListener  {
-            showDevicePickerSheet()
+            requestBlePermissionsIfNeeded()
         }
 
         view.findViewById<View>(R.id.menuConnectedDevices)?.setOnClickListener {
@@ -238,7 +297,81 @@ class ProfileFragment : Fragment(), MotionSessionManager.Observer {
 
     private fun showUserInfoBottomSheet() {
         val dialog = BottomSheetDialog(requireContext())
+
+        // 1. Gonfiamo CORRETTAMENTE il file di layout XML (dialog_user_info.xml)
         val sheetView = layoutInflater.inflate(R.layout.dialog_user_info, null)
+
+        // 2. Colleghiamo i componenti usando la vista del dialogo (sheetView) e gli ID esatti del tuo XML
+        val spinnerGender = sheetView.findViewById<Spinner>(R.id.spinnerGender)
+        val editName = sheetView.findViewById<EditText>(R.id.editName)
+        val editSurname = sheetView.findViewById<EditText>(R.id.editSurname)
+        val editHeight = sheetView.findViewById<EditText>(R.id.editHeight)
+        val editWeight = sheetView.findViewById<EditText>(R.id.editWeight)
+        val editAge = sheetView.findViewById<EditText>(R.id.editAge)
+        val btnSaveInfo = sheetView.findViewById<Button>(R.id.btnSaveInfo)
+
+        // 3. Popoliamo le opzioni dello Spinner per la scelta del sesso
+        val genderOptions = arrayOf("Maschio", "Femmina", "Altro")
+        val spinnerAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, genderOptions)
+        spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinnerGender?.adapter = spinnerAdapter
+
+        // 4. Otteniamo l'UID dell'utente corrente da Firebase Auth per isolare i dati locali
+        val auth = FirebaseAuth.getInstance()
+        val userId = auth.currentUser?.uid ?: "user"
+
+        // 5. Apriamo il file SharedPreferences locale con la stessa identica stringa usata da SmartRingProtocol
+        val sharedPref = requireContext().getSharedPreferences("UserData_$userId", Context.MODE_PRIVATE)
+
+        // 6. Pre-carichiamo i dati precedentemente salvati (se esistono) per mostrarli nei campi
+        val savedGenderPos = sharedPref.getInt("gender_pos", 0)
+        val savedAge = sharedPref.getString("age", "")
+        val savedHeight = sharedPref.getString("height", "")
+        val savedWeight = sharedPref.getString("weight", "")
+        val savedName = sharedPref.getString("name", "")
+        val savedSurname = sharedPref.getString("surname", "")
+
+        spinnerGender?.setSelection(savedGenderPos)
+        editAge?.setText(savedAge)
+        editHeight?.setText(savedHeight)
+        editWeight?.setText(savedWeight)
+        editName?.setText(savedName)
+        editSurname?.setText(savedSurname)
+
+        // 7. Logica di salvataggio al clic sul pulsante "Salva Informazioni"
+        btnSaveInfo?.setOnClickListener {
+            val ageStr = editAge?.text.toString().trim()
+            val heightStr = editHeight?.text.toString().trim()
+            val weightStr = editWeight?.text.toString().trim()
+            val nameStr = editName?.text.toString().trim()
+            val surnameStr = editSurname?.text.toString().trim()
+            val genderPos = spinnerGender?.selectedItemPosition ?: 0
+
+            // Validazione dei parametri hardware obbligatori per l'anello
+            if (ageStr.isNotEmpty() && heightStr.isNotEmpty() && weightStr.isNotEmpty()) {
+
+                // Scrittura persistente nel file XML locale del dispositivo
+                sharedPref.edit().apply {
+                    putInt("gender_pos", genderPos)
+                    putString("age", ageStr)
+                    putString("height", heightStr)
+                    putString("weight", weightStr)
+
+                    // Salviamo opzionalmente anche nome e cognome richiesti dal tuo layout
+                    putString("name", nameStr)
+                    putString("surname", surnameStr)
+
+                    apply() // Applica le modifiche in background
+                }
+
+                Toast.makeText(requireContext(), "Informazioni salvate localmente!", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            } else {
+                Toast.makeText(requireContext(), "Compila obbligatoriamente Età, Altezza e Peso", Toast.LENGTH_LONG).show()
+            }
+        }
+
+        // 8. Assegniamo la vista corretta al foglio di dialogo e lo mostriamo
         dialog.setContentView(sheetView)
         dialog.show()
     }

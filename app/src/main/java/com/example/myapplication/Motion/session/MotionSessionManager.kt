@@ -36,6 +36,13 @@ object MotionSessionManager : MotionPipeline.Listener {
     @Volatile
     private var state = MotionUiState()
 
+    private val activityCounts = mutableMapOf(
+        "Walking" to 0,
+        "Jogging" to 0,
+        "Sitting" to 0,
+        "Standing" to 0
+    )
+
     fun initialize(context: Context) {
         appContext = context.applicationContext
         if (motionPipeline == null) {
@@ -65,10 +72,20 @@ object MotionSessionManager : MotionPipeline.Listener {
         motionPipeline?.setInferenceEnabled(enabled)
     }
 
+    fun getActivityCounts(): Map<String, Int> = activityCounts.toMap()
+
+    fun resetActivityCounts() {
+        activityCounts.keys.forEach { key ->
+            activityCounts[key] = 0
+        }
+        notifyAllObservers(state)
+    }
+
     fun connectToShimmer(context: Context, macAddress: String) {
         initialize(context)
 
         shimmerManager?.disconnect()
+        resetActivityCounts()
 
         shimmerManager = ShimmerClassicManager(
             context = context.applicationContext,
@@ -97,6 +114,7 @@ object MotionSessionManager : MotionPipeline.Listener {
         motionPipeline?.setInferenceEnabled(false)
         motionPipeline?.reset()
         shimmerManager = null
+        resetActivityCounts()
 
         updateState {
             copy(
@@ -128,6 +146,7 @@ object MotionSessionManager : MotionPipeline.Listener {
         motionPipeline?.setInferenceEnabled(false)
         motionPipeline?.reset()
         shimmerManager = null
+        resetActivityCounts()
 
         updateState {
             copy(
@@ -169,9 +188,15 @@ object MotionSessionManager : MotionPipeline.Listener {
     }
 
     override fun onPredictionReceived(result: LocalPredictionResult) {
+        val activity = result.prediction
+
+        if (activityCounts.containsKey(activity)) {
+            activityCounts[activity] = (activityCounts[activity] ?: 0) + 1
+        }
+
         updateState {
             copy(
-                currentActivity = result.prediction,
+                currentActivity = activity,
                 confidencePercent = (result.confidence * 100).toInt().coerceIn(0, 100),
                 lastError = null
             )
