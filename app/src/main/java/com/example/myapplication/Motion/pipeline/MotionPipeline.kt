@@ -2,12 +2,12 @@ package com.example.myapplication.Motion.pipeline
 
 import android.content.Context
 import android.util.Log
-import com.example.myapplication.ImuSample
+import com.example.myapplication.BT.Shimmer.ImuSample
 import com.example.myapplication.Motion.model.AccelSample
 import com.example.myapplication.Motion.model.AccelWindow
 import com.example.myapplication.Motion.tflite.Classifier
 import com.example.myapplication.Motion.tflite.LocalPredictionResult
-import com.example.myapplication.ShimmerClassicManager
+import com.example.myapplication.BT.Shimmer.ShimmerClassicManager
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean

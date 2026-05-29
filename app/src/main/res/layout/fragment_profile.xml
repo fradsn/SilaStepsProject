@@ -7,9 +7,11 @@
     android:padding="20dp"
     android:background="@color/background_dark">
 
+    <!-- HEADER -->
     <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
         android:layout_marginBottom="32dp">
 
         <TextView
@@ -17,28 +19,34 @@
             android:layout_height="wrap_content"
             android:text="Profilo"
             android:textColor="@color/white"
-            android:textSize="24sp"
+            android:textSize="30sp"
             android:textStyle="bold"
             android:layout_alignParentStart="true"
             android:layout_centerVertical="true" />
 
         <ImageButton
             android:id="@+id/logout_button"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="45dp"
+            android:layout_height="45dp"
             android:layout_alignParentEnd="true"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@drawable/baseline_logout_24"
+            android:adjustViewBounds="true"
+            android:scaleType="fitCenter"
             app:tint="@color/white" />
+
     </RelativeLayout>
 
+    <!-- ICONA PROFILO -->
     <ImageView
-        android:layout_width="80dp"
-        android:layout_height="80dp"
+        android:layout_width="110dp"
+        android:layout_height="110dp"
         android:layout_gravity="center"
         android:src="@drawable/user_svgrepo_com"
+        android:padding="10dp"
         app:tint="@color/white" />
 
+    <!-- EMAIL -->
     <TextView
         android:id="@+id/profile_email"
         android:layout_width="match_parent"
@@ -46,15 +54,16 @@
         android:gravity="center"
         android:text="Benvenuto"
         android:textColor="@color/white"
-        android:textSize="18sp"
+        android:textSize="35sp"
         android:textStyle="bold"
         android:layout_marginTop="16dp"
-        android:layout_marginBottom="32dp" />
+        android:layout_marginBottom="20dp" />
 
+    <!-- MENU BUTTON 1 -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/menuUserInfo"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="70dp"
         android:layout_marginBottom="12dp"
         app:cardBackgroundColor="@color/card_surface"
         app:cardCornerRadius="16dp"
@@ -62,22 +71,34 @@
         android:focusable="true"
         android:foreground="?attr/selectableItemBackground">
 
-        <TextView
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:padding="20dp"
-            android:text="Informazioni Utente"
-            android:drawableStart="@drawable/ic_account_box"
-            android:drawablePadding="16dp"
-            android:drawableTint="@color/white"
-            android:textColor="@color/white"
-            android:textSize="16sp" />
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="20dp">
+
+            <ImageView
+                android:layout_width="50dp"
+                android:layout_height="50dp"
+                android:src="@drawable/ic_account_box"
+                app:tint="@color/white" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:text="Informazioni Utente"
+                android:textColor="@color/white"
+                android:textSize="20sp" />
+        </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
+    <!-- MENU BUTTON 2 -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/menuFindDevices"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="70dp"
         android:layout_marginBottom="12dp"
         app:cardBackgroundColor="@color/card_surface"
         app:cardCornerRadius="16dp"
@@ -85,38 +106,61 @@
         android:focusable="true"
         android:foreground="?attr/selectableItemBackground">
 
-        <TextView
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:padding="20dp"
-            android:text="Trova Nuovi Dispositivi"
-            android:drawableStart="@android:drawable/ic_menu_search"
-            android:drawablePadding="16dp"
-            android:drawableTint="@color/white"
-            android:textColor="@color/white"
-            android:textSize="16sp" />
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="20dp">
+
+            <ImageView
+                android:layout_width="50dp"
+                android:layout_height="50dp"
+                android:src="@android:drawable/ic_search_category_default"
+                app:tint="@color/white" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:text="Trova Nuovi Dispositivi"
+                android:textColor="@color/white"
+                android:textSize="20sp" />
+        </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
+    <!-- MENU BUTTON 3 -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/menuConnectedDevices"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="70dp"
         app:cardBackgroundColor="@color/card_surface"
         app:cardCornerRadius="16dp"
         android:clickable="true"
         android:focusable="true"
         android:foreground="?attr/selectableItemBackground">
 
-        <TextView
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:padding="20dp"
-            android:text="Dispositivi Connessi"
-            android:drawableStart="@drawable/baseline_checklist_24"
-            android:drawablePadding="16dp"
-            android:drawableTint="@color/white"
-            android:textColor="@color/white"
-            android:textSize="16sp" />
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="20dp">
+
+            <ImageView
+                android:layout_width="50dp"
+                android:layout_height="50dp"
+                android:src="@drawable/baseline_checklist_24"
+                app:tint="@color/white" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:text="Dispositivi Connessi"
+                android:textColor="@color/white"
+                android:textSize="20sp" />
+        </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
 </LinearLayout>

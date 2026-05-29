@@ -62,7 +62,7 @@
                 <TextView android:id="@+id/tvBpmValue" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="--" android:textColor="@color/white" android:textSize="42sp" android:textStyle="bold" android:layout_marginTop="12dp" app:layout_constraintTop_toBottomOf="@id/tvHeartRateTitle" app:layout_constraintStart_toStartOf="parent" />
 
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="16dp" app:layout_constraintTop_toBottomOf="@id/tvBpmValue">
-                    <Button android:id="@+id/btnToggleHR" android:layout_width="match_parent" android:layout_height="36dp" android:text="START BPM" android:backgroundTint="@color/accent_teal" android:textSize="10sp" />
+                    <Button android:id="@+id/btnToggleHR" android:layout_width="match_parent" android:layout_height="40dp" android:text="START BPM" android:backgroundTint="@color/accent_teal" android:textSize="10sp" />
                 </LinearLayout>
             </androidx.constraintlayout.widget.ConstraintLayout>
         </androidx.cardview.widget.CardView>
@@ -82,7 +82,7 @@
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Ossigeno" android:textColor="@color/white" android:textStyle="bold" android:textSize="14sp" />
                 <TextView android:id="@+id/tvSpO2Value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="-- %" android:textColor="@color/accent_teal" android:textSize="22sp" android:textStyle="bold" />
-                <Button android:id="@+id/btnStartSpO2" android:layout_width="match_parent" android:layout_height="30dp" android:text="AVVIA SPO₂" android:backgroundTint="@color/accent_teal" android:textSize="10sp" />
+                <Button android:id="@+id/btnStartSpO2" android:layout_width="match_parent" android:layout_height="40dp" android:text="AVVIA SPO₂" android:backgroundTint="@color/accent_teal" android:textSize="10sp" />
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
@@ -100,7 +100,7 @@
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Pressione" android:textColor="@color/white" android:textStyle="bold" android:textSize="14sp" />
                 <TextView android:id="@+id/tvBpValue" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="-- / --" android:textColor="@color/accent_orange" android:textSize="22sp" android:textStyle="bold" />
-                <Button android:id="@+id/btnStartBP" android:layout_width="match_parent" android:layout_height="30dp" android:text="AVVIA BP" android:backgroundTint="@color/accent_teal" android:textSize="10sp" />
+                <Button android:id="@+id/btnStartBP" android:layout_width="match_parent" android:layout_height="40dp" android:text="AVVIA BP" android:backgroundTint="@color/accent_teal" android:textSize="10sp" />
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 

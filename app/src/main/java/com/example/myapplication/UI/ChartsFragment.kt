@@ -7,7 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.fragment.app.Fragment
-import com.example.myapplication.GestoreStatistiche
+import com.example.myapplication.service.GestoreStatistiche
 import com.example.myapplication.Motion.session.MotionSessionManager
 import com.example.myapplication.Motion.session.MotionUiState
 import com.example.myapplication.R
@@ -24,23 +24,29 @@ import com.github.mikephil.charting.formatter.PercentFormatter
 
 class ChartsFragment : Fragment(), MotionSessionManager.Observer {
 
-    private lateinit var BPMChart: LineChart
     private lateinit var pieChart: PieChart
-    private lateinit var tvCurrentBpm: TextView
+    private lateinit var BPMChart: LineChart
     private lateinit var O2Chart: LineChart
     private lateinit var pressureChart: LineChart
 
-    private lateinit var tvLastPressure: TextView
+    private lateinit var tvCurrentBpm: TextView
     private lateinit var tvLastO2: TextView
-    private val activityLabels = listOf("Walking", "Jogging", "Sitting", "Standing")
-    private lateinit var gestoreStatistiche: GestoreStatistiche
+    private lateinit var tvLastPressure: TextView
 
+    private val activityLabels = listOf("Walking", "Jogging", "Sitting", "Standing")
     private val activityColorMap = mapOf(
         "Walking" to Color.parseColor("#4CAF74"),
         "Jogging" to Color.parseColor("#66BB6A"),
         "Sitting" to Color.parseColor("#7A9B7D"),
         "Standing" to Color.parseColor("#2E7D52")
     )
+
+    private lateinit var gestoreStatistiche: GestoreStatistiche
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        gestoreStatistiche = GestoreStatistiche.getInstance(requireContext())
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -54,22 +60,23 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
         super.onViewCreated(view, savedInstanceState)
 
         BPMChart = view.findViewById(R.id.BPMChart)
-        pieChart = view.findViewById(R.id.activityChart)
         tvCurrentBpm = view.findViewById(R.id.tvCurrentBpm)
+
         tvLastO2 = view.findViewById(R.id.tvLastO2)
         O2Chart = view.findViewById(R.id.O2Chart)
 
         tvLastPressure = view.findViewById(R.id.tvLastPressure)
         pressureChart = view.findViewById(R.id.bloodPressureChart)
+
+        pieChart = view.findViewById(R.id.activityChart)
         setupPieChartStyle()
         refreshPieChart()
 
         MotionSessionManager.addObserver(this)
 
-        val history = CurrentActivityFragment.bpmHistory
-        if (history.isNotEmpty()) {
-            updateHeartRateChart(history, history.last().toInt())
-        }
+        caricaBpm()
+        caricaO2()
+        caricaPressione()
     }
 
     override fun onDestroyView() {
@@ -127,27 +134,40 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
         pieChart.invalidate()
     }
 
-    fun updateHeartRateChart(bpmList: List<Float>, currentBpm: Int) {
-        val entries = bpmList.mapIndexed { i, v -> Entry(i.toFloat(), v) }
-        val dataSet = LineDataSet(entries, "BPM").apply {
-            color = Color.parseColor("#D4A044")
-            setDrawCircles(false)
-            lineWidth = 2.5f
-            mode = LineDataSet.Mode.CUBIC_BEZIER
-            setDrawFilled(true)
-            fillColor = Color.parseColor("#D4A044")
-            fillAlpha = 40
+    private fun caricaBpm() {
+        val lista = gestoreStatistiche.getBpm()
+        if (lista.isEmpty()) return
+
+        // Aggiorna valore corrente
+        val ultimo = lista.last()
+        tvCurrentBpm.text = ultimo.bpm.toString()
+
+        // Prepara dati grafico
+        val entries = lista.mapIndexed { index, item ->
+            Entry(index.toFloat(), item.bpm.toFloat())
         }
 
-        BPMChart.data = LineData(dataSet)
-        BPMChart.description.isEnabled = false
-        BPMChart.xAxis.textColor = Color.LTGRAY
-        BPMChart.axisLeft.textColor = Color.LTGRAY
-        BPMChart.axisRight.isEnabled = false
-        BPMChart.invalidate()
+        val dataSet = LineDataSet(entries, "BPM").apply {
+            color = Color.parseColor("#FF9800")
+            setCircleColor(Color.WHITE)
+            lineWidth = 2f
+            circleRadius = 3f
+            valueTextColor = Color.WHITE
+            mode = LineDataSet.Mode.CUBIC_BEZIER
+        }
 
-        tvCurrentBpm.text = currentBpm.toString()
+        BPMChart.apply {
+            data = LineData(dataSet)
+            description.isEnabled = false
+            axisRight.isEnabled = false
+            xAxis.position = XAxis.XAxisPosition.BOTTOM
+            xAxis.textColor = Color.WHITE
+            axisLeft.textColor = Color.WHITE
+            legend.textColor = Color.WHITE
+            invalidate()
+        }
     }
+
     private fun caricaO2() {
         val lista = gestoreStatistiche.getO2()
         if (lista.isEmpty()) return

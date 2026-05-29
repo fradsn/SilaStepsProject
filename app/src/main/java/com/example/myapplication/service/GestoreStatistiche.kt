@@ -1,9 +1,9 @@
-package com.example.myapplication
+package com.example.myapplication.service
 
 import android.content.Context
 import com.example.myapplication.db.dao.BpmDao
-import com.example.myapplication.db.dao.PressureDao
 import com.example.myapplication.db.dao.O2Dao
+import com.example.myapplication.db.dao.PressureDao
 
 class GestoreStatistiche private constructor(context: Context) {
 

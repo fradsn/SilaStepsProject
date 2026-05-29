@@ -30,17 +30,19 @@ import com.example.myapplication.BT.ring.Decoder
 import com.example.myapplication.Motion.session.MotionSessionManager
 import com.example.myapplication.Motion.session.MotionUiState
 import com.example.myapplication.R
+import com.example.myapplication.service.GestoreStatistiche
 
 class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
 
     companion object {
         var isMeasuringHRGlobal: Boolean = false
-        val bpmHistory: MutableList<Float> = mutableListOf()
 
         var lastBpm: String = "--"
         var lastSpO2: String = "-- %"
         var lastBP: String = "-- / --"
     }
+
+    private lateinit var gestoreStatistiche: GestoreStatistiche
 
     private lateinit var tvBpmValue: TextView
     private lateinit var tvSpO2Value: TextView
@@ -72,9 +74,6 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
 
             val elapsedMs = System.currentTimeMillis() - currentSessionStartMillis
             val totalSeconds = (elapsedMs / 1000L).toInt()
-            val minutes = totalSeconds / 60
-            val seconds = totalSeconds % 60
-
 
             durationHandler.postDelayed(this, 1000L)
         }
@@ -141,6 +140,11 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
         )
 
         setupSmartRingButtons()
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        gestoreStatistiche = GestoreStatistiche.getInstance(requireContext())
     }
 
     private fun bindViews(view: View) {
@@ -226,26 +230,23 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
             when (result.type) {
                 "BPM" -> {
                     if (result.value > 0) {
-                        lastBpm = result.value.toString()
+                        lastBpm = result.value.toString() // Salva valore globale
                         tvBpmValue.text = lastBpm
 
-
-                        bpmHistory.add(result.value.toFloat())
-                        if (bpmHistory.size > 100) bpmHistory.removeAt(0)
-
-                        (parentFragmentManager.findFragmentByTag("charts") as? ChartsFragment)
-                            ?.updateHeartRateChart(bpmHistory, result.value)
+                        gestoreStatistiche.salvaBpm(result.value)
                     }
                 }
-
                 "SPO2" -> {
-                    lastSpO2 = "${result.value} %"
+                    lastSpO2 = "${result.value} %" // Salva valore globale
                     tvSpO2Value.text = lastSpO2
-                }
 
+                    gestoreStatistiche.salvaO2(result.value)
+                }
                 "BP" -> {
-                    lastBP = "${result.sys} / ${result.dia}"
+                    lastBP = "${result.sys} / ${result.dia}" // Salva valore globale
                     tvBpValue.text = lastBP
+
+                    gestoreStatistiche.salvaPressione(result.sys, result.dia)
                 }
             }
         }
@@ -333,15 +334,6 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
         tvBpmValue.text = lastBpm
     }
 
-    private fun startDurationTimer() {
-        durationHandler.removeCallbacks(durationRunnable)
-        durationHandler.post(durationRunnable)
-    }
-
-    private fun stopDurationTimer() {
-        durationHandler.removeCallbacks(durationRunnable)
-    }
-
     private fun setActivityIcon(activity: String) {
         val drawableRes = when (activity.lowercase()) {
             "walking" -> getDrawableIdByName("ic_activity_walking")
@@ -386,7 +378,6 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
     override fun onStart() {
         super.onStart()
         val filter = IntentFilter().apply {
@@ -412,7 +403,6 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
     override fun onDestroyView() {
         super.onDestroyView()
 
-        stopDurationTimer()
         MotionSessionManager.removeObserver(this)
 
         try {

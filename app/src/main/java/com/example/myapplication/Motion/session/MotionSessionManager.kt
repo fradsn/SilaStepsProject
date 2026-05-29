@@ -6,7 +6,7 @@ import android.os.Looper
 import com.example.myapplication.Motion.model.AccelWindow
 import com.example.myapplication.Motion.pipeline.MotionPipeline
 import com.example.myapplication.Motion.tflite.LocalPredictionResult
-import com.example.myapplication.ShimmerClassicManager
+import com.example.myapplication.BT.Shimmer.ShimmerClassicManager
 import java.util.concurrent.CopyOnWriteArraySet
 
 data class MotionUiState(
