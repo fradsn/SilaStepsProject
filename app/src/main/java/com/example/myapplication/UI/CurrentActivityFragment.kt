@@ -3,17 +3,7 @@ package com.example.myapplication.UI
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
-import android.content.BroadcastReceiver
-import android.content.ComponentName
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.content.ServiceConnection
-import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.IBinder
-import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -23,20 +13,20 @@ import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
-import androidx.annotation.RequiresApi
 import androidx.fragment.app.Fragment
-import com.example.myapplication.BT.ring.BLE
 import com.example.myapplication.BT.ring.Decoder
+import com.example.myapplication.BT.ring.SmartRingManager
 import com.example.myapplication.Motion.session.MotionSessionManager
 import com.example.myapplication.Motion.session.MotionUiState
 import com.example.myapplication.R
 import com.example.myapplication.service.GestoreStatistiche
 
-class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
+class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSessionManager.Observer {
 
     companion object {
         var isMeasuringHRGlobal: Boolean = false
 
+        // Variabili per mantenere gli ultimi valori visualizzati tra i cambi di tab
         var lastBpm: String = "--"
         var lastSpO2: String = "-- %"
         var lastBP: String = "-- / --"
@@ -52,6 +42,7 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
     private lateinit var btnStartSpO2: Button
     private lateinit var btnStartBP: Button
 
+    // Componenti grafici dedicati all'output del Machine Learning
     private lateinit var tvActivityLabel: TextView
     private lateinit var tvConfidenceValue: TextView
     private lateinit var progressConfidence: ProgressBar
@@ -61,57 +52,11 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
     private lateinit var pulseRing2: View
     private lateinit var pulseRing3: View
 
-    private var bleService: BLE? = null
-    private var isBleBound = false
+    private var ringManager: SmartRingManager? = null
 
-    private var currentSessionStartMillis: Long = 0L
-    private var motionStreaming: Boolean = false
-
-    private val durationHandler = Handler(Looper.getMainLooper())
-    private val durationRunnable = object : Runnable {
-        override fun run() {
-            if (!isAdded || !motionStreaming || currentSessionStartMillis <= 0L) return
-
-            val elapsedMs = System.currentTimeMillis() - currentSessionStartMillis
-            val totalSeconds = (elapsedMs / 1000L).toInt()
-
-            durationHandler.postDelayed(this, 1000L)
-        }
-    }
-
-    private val bleReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            when (intent?.action) {
-                "BLE_DATA_RX" -> {
-                    val raw = intent.getStringExtra("data") ?: return
-                    if (raw.startsWith("RX: ")) {
-                        handleDecodedData(raw.removePrefix("RX: "))
-                    }
-                }
-
-                "BLE_STATUS_UPDATE" -> {
-                    val status = intent.getStringExtra("status") ?: "DISCONNESSO"
-                    if (status == "CONNESSO") onBleConnected() else onBleDisconnected()
-                }
-            }
-        }
-    }
-
-    private val serviceConnection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-            bleService = (binder as BLE.LocalBinder).getService()
-            bleService?.initialize()
-            isBleBound = true
-
-            if (bleService?.isDeviceConnected() == true) {
-                onBleConnected()
-            }
-        }
-
-        override fun onServiceDisconnected(name: ComponentName?) {
-            bleService = null
-            isBleBound = false
-        }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        gestoreStatistiche = GestoreStatistiche.Companion.getInstance(requireContext())
     }
 
     override fun onCreateView(
@@ -126,28 +71,28 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
         super.onViewCreated(view, savedInstanceState)
 
         bindViews(view)
-        restoreSmartRingUi()
         startPulseAnimation()
 
+        // --- RIPRISTINO STATO UI ---
+        btnToggleHR.text = if (isMeasuringHRGlobal) "STOP BPM" else "START BPM"
+        tvBpmValue.text = lastBpm
+        tvSpO2Value.text = lastSpO2
+        tvBpValue.text = lastBP
+        // ---------------------------
+
+        // Inizializzazione e aggancio dell'osservatore per il modulo di Machine Learning
         MotionSessionManager.initialize(requireContext())
         MotionSessionManager.addObserver(this)
         renderMotionState(MotionSessionManager.getState())
 
-        requireActivity().bindService(
-            Intent(requireActivity(), BLE::class.java),
-            serviceConnection,
-            Context.BIND_AUTO_CREATE
-        )
+        // Recuperiamo l'istanza attiva globale se presente nell'applicazione
+        ringManager = SmartRingManager.Companion.getActiveInstance()
 
         setupSmartRingButtons()
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        gestoreStatistiche = GestoreStatistiche.getInstance(requireContext())
-    }
-
     private fun bindViews(view: View) {
+        // Componenti grafici dell'attività del Machine Learning
         tvActivityLabel = view.findViewById(R.id.tvActivityLabel)
         tvConfidenceValue = view.findViewById(R.id.tvConfidenceValue)
         progressConfidence = view.findViewById(R.id.progressConfidence)
@@ -166,26 +111,16 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
         btnStartBP = view.findViewById(R.id.btnStartBP)
     }
 
-    private fun restoreSmartRingUi() {
-        btnToggleHR.text = if (isMeasuringHRGlobal) "STOP BPM" else "START BPM"
-        tvBpmValue.text = lastBpm
-        tvSpO2Value.text = lastSpO2
-        tvBpValue.text = lastBP
-
-
-    }
-
     private fun setupSmartRingButtons() {
         btnToggleHR.setOnClickListener {
-            val isConnected = bleService?.isDeviceConnected() ?: false
-
+            val isConnected = ringManager?.isConnected() == true
             if (isConnected) {
                 if (isMeasuringHRGlobal) {
-                    stopAllSensors()
+                    ringManager?.stopAllMeasurements()
                     isMeasuringHRGlobal = false
                     btnToggleHR.text = "START BPM"
                 } else {
-                    startHR()
+                    ringManager?.startHeartRateMeasurement()
                     isMeasuringHRGlobal = true
                     btnToggleHR.text = "STOP BPM"
                 }
@@ -199,16 +134,25 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
         }
 
         btnStartSpO2.setOnClickListener {
-            if (bleService?.isDeviceConnected() == true) startSpO2()
-            else Toast.makeText(context, "Anello non connesso", Toast.LENGTH_SHORT).show()
+            if (ringManager?.isConnected() == true) {
+                ringManager?.startSpO2Measurement()
+            } else {
+                Toast.makeText(context, "Anello non connesso", Toast.LENGTH_SHORT).show()
+            }
         }
 
         btnStartBP.setOnClickListener {
-            if (bleService?.isDeviceConnected() == true) startBP()
-            else Toast.makeText(context, "Anello non connesso", Toast.LENGTH_SHORT).show()
+            if (ringManager?.isConnected() == true) {
+                ringManager?.startBloodPressureMeasurement()
+            } else {
+                Toast.makeText(context, "Anello non connesso", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
+    // =====================================================================================
+    // GESTIONE MACHINE LEARNING / MOTION OBSERVER CALLBACKS
+    // =====================================================================================
     override fun onMotionStateChanged(state: MotionUiState) {
         if (!isAdded) return
         renderMotionState(state)
@@ -219,119 +163,7 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
         tvConfidenceValue.text = "${state.confidencePercent}%"
         progressConfidence.progress = state.confidencePercent
 
-        motionStreaming = state.streaming
-        currentSessionStartMillis = state.sessionStartMillis
-
         setActivityIcon(state.currentActivity)
-    }
-
-    private fun handleDecodedData(hex: String) {
-        Decoder.decode(hex)?.let { result ->
-            when (result.type) {
-                "BPM" -> {
-                    if (result.value > 0) {
-                        lastBpm = result.value.toString() // Salva valore globale
-                        tvBpmValue.text = lastBpm
-
-                        gestoreStatistiche.salvaBpm(result.value)
-                    }
-                }
-                "SPO2" -> {
-                    lastSpO2 = "${result.value} %" // Salva valore globale
-                    tvSpO2Value.text = lastSpO2
-
-                    gestoreStatistiche.salvaO2(result.value)
-                }
-                "BP" -> {
-                    lastBP = "${result.sys} / ${result.dia}" // Salva valore globale
-                    tvBpValue.text = lastBP
-
-                    gestoreStatistiche.salvaPressione(result.sys, result.dia)
-                }
-            }
-        }
-    }
-
-    private fun startHR() {
-        bleService?.sendCommand(
-            0x03.toByte(),
-            0x0C.toByte(),
-            byteArrayOf(0x01, 0x01),
-            "Stream ON"
-        )
-
-        Handler(Looper.getMainLooper()).postDelayed({
-            bleService?.sendCommand(
-                0x03.toByte(),
-                0x09.toByte(),
-                byteArrayOf(0x01, 0x01, 0x01),
-                "Start BPM"
-            )
-        }, 600)
-    }
-
-    private fun stopAllSensors() {
-        bleService?.sendCommand(
-            0x03.toByte(),
-            0x09.toByte(),
-            byteArrayOf(0x00, 0x01, 0x01),
-            "Stop BPM"
-        )
-
-        Handler(Looper.getMainLooper()).postDelayed({
-            bleService?.sendCommand(
-                0x03.toByte(),
-                0x0C.toByte(),
-                byteArrayOf(0x00, 0x01),
-                "Stream OFF"
-            )
-        }, 600)
-    }
-
-    private fun startSpO2() {
-        bleService?.sendCommand(
-            0x03.toByte(),
-            0x0C.toByte(),
-            byteArrayOf(0x01, 0x01),
-            "Stream ON SpO2"
-        )
-
-        Handler(Looper.getMainLooper()).postDelayed({
-            bleService?.sendCommand(
-                0x03.toByte(),
-                0x2F.toByte(),
-                byteArrayOf(0x01, 0x02),
-                "Start SpO2"
-            )
-        }, 600)
-    }
-
-    private fun startBP() {
-        bleService?.sendCommand(
-            0x03.toByte(),
-            0x0C.toByte(),
-            byteArrayOf(0x01, 0x01),
-            "Stream ON BP"
-        )
-
-        Handler(Looper.getMainLooper()).postDelayed({
-            bleService?.sendCommand(
-                0x03.toByte(),
-                0x2F.toByte(),
-                byteArrayOf(0x01, 0x01),
-                "Start BP"
-            )
-        }, 600)
-    }
-
-    private fun onBleConnected() {
-    }
-
-    private fun onBleDisconnected() {
-        isMeasuringHRGlobal = false
-        lastBpm = "--"
-        btnToggleHR.text = "START BPM"
-        tvBpmValue.text = lastBpm
     }
 
     private fun setActivityIcon(activity: String) {
@@ -352,6 +184,108 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
         return resources.getIdentifier(name, "drawable", requireContext().packageName)
     }
 
+    // =====================================================================================
+    // GESTIONE SMART RING LISTENER CALLBACKS
+    // =====================================================================================
+    override fun onConnected() {
+        // Callback di allineamento stato grafico opzionale
+    }
+
+    override fun onDisconnected() {
+        // Aggiorna IMMEDIATAMENTE lo stato logico globale, a prescindere dalla UI
+        isMeasuringHRGlobal = false
+        lastBpm = "--"
+
+        activity?.runOnUiThread {
+            if (isAdded) { // Verifica che il fragment sia ancora attaccato in sicurezza
+                btnToggleHR.text = "START BPM"
+                tvBpmValue.text = lastBpm
+            }
+        }
+    }
+
+    override fun onDataReceived(result: Decoder.DecodedResult) {
+        activity?.runOnUiThread {
+            if (!isAdded) return@runOnUiThread
+            when (result.type) {
+                "BPM" -> {
+                    if (result.value > 0) {
+                        lastBpm = result.value.toString()
+                        tvBpmValue.text = lastBpm
+                        gestoreStatistiche.salvaBpm(result.value)
+                    }
+                }
+                "SPO2" -> {
+                    if (result.value > 0) {
+                        lastSpO2 = "${result.value} %"
+                        tvSpO2Value.text = lastSpO2
+                        gestoreStatistiche.salvaO2(result.value)
+                    }
+                }
+                "BP" -> {
+                    if (result.sys > 0) {
+                        lastBP = "${result.sys} / ${result.dia}"
+                        tvBpValue.text = lastBP
+                        gestoreStatistiche.salvaPressione(result.sys, result.dia)
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onError(msg: String) {
+        activity?.runOnUiThread {
+            if (isAdded) {
+                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // =====================================================================================
+    // CICLO DI VITA E AGGANCIO COMPONENTI ASINCRONI
+    // =====================================================================================
+    override fun onResume() {
+        super.onResume()
+
+        // Riagganciamo l'Observer del Machine Learning all'attivazione del frammento
+        MotionSessionManager.addObserver(this)
+        renderMotionState(MotionSessionManager.getState())
+
+        val activeInstance = SmartRingManager.Companion.getActiveInstance()
+        if (activeInstance != null) {
+            ringManager = activeInstance
+            ringManager?.updateListener(this)
+
+            if (ringManager?.isConnected() == false) {
+                isMeasuringHRGlobal = false
+                btnToggleHR.text = "START BPM"
+                tvBpmValue.text = lastBpm
+            }
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+
+        // Rimuoviamo il listener ML e azzeriamo le callback grafiche BLE per prevenire Memory Leak
+        MotionSessionManager.removeObserver(this)
+
+        ringManager?.updateListener(object : SmartRingManager.SmartRingListener {
+            override fun onConnected() {}
+            override fun onDisconnected() {}
+            override fun onDataReceived(result: Decoder.DecodedResult) {}
+            override fun onError(msg: String) {}
+        })
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        MotionSessionManager.removeObserver(this)
+    }
+
+    // =====================================================================================
+    // ANIMATION LOGIC
+    // =====================================================================================
     private fun startPulseAnimation() {
         animatePulseRing(pulseRing3, 2200L, 0L)
         animatePulseRing(pulseRing2, 2200L, 400L)
@@ -364,55 +298,12 @@ class CurrentActivityFragment : Fragment(), MotionSessionManager.Observer {
             repeatCount = ValueAnimator.INFINITE
             interpolator = AccelerateDecelerateInterpolator()
         }
-
         val scaleY = ObjectAnimator.ofFloat(view, "scaleY", 1f, 1.18f, 1f).apply {
             duration = durationMs
             startDelay = delay
             repeatCount = ValueAnimator.INFINITE
             interpolator = AccelerateDecelerateInterpolator()
         }
-
-        AnimatorSet().apply {
-            playTogether(scaleX, scaleY)
-            start()
-        }
-    }
-
-    override fun onStart() {
-        super.onStart()
-        val filter = IntentFilter().apply {
-            addAction("BLE_DATA_RX")
-            addAction("BLE_STATUS_UPDATE")
-        }
-
-        requireContext().registerReceiver(
-            bleReceiver,
-            filter,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Context.RECEIVER_EXPORTED else 0
-        )
-    }
-
-    override fun onStop() {
-        super.onStop()
-        try {
-            requireContext().unregisterReceiver(bleReceiver)
-        } catch (_: Exception) {
-        }
-    }
-
-    override fun onDestroyView() {
-        super.onDestroyView()
-
-        MotionSessionManager.removeObserver(this)
-
-        try {
-            if (isBleBound) {
-                requireActivity().unbindService(serviceConnection)
-                isBleBound = false
-            }
-        } catch (_: Exception) {
-        }
-
-        bleService = null
+        AnimatorSet().apply { playTogether(scaleX, scaleY); start() }
     }
 }

@@ -1,4 +1,4 @@
-package com.example.myapplication.BT.ring
+package com.example.myapplication.BT
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice

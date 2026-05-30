@@ -2,14 +2,18 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
-        android:usesPermissionFlags="neverForLocation" tools:targetApi="s" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" tools:targetApi="s" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" tools:targetApi="s" />
     <uses-permission android:name="android.permission.NEARBY_DEVICES" tools:targetApi="s" />
-    <uses-permission android:name="android.permission.INTERNET" />
+
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
     <uses-feature android:name="android.hardware.bluetooth" android:required="true" />
 
@@ -20,20 +24,16 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.MyApplication"
-        android:usesCleartextTraffic="true">
-
-        <activity android:name=".UI.Login" android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+        android:usesCleartextTraffic="true"> <activity android:name=".UI.Login" android:exported="true">
+        <intent-filter>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent-filter>
+    </activity>
 
         <activity android:name=".UI.RegisterActivity" android:exported="false" />
         <activity android:name=".UI.UserProfileActivity" android:exported="false" />
         <activity android:name=".UI.ResetActivity" android:exported="false" />
-
-        <service android:name=".BT.ring.BLE" android:enabled="true" android:exported="false" />
 
     </application>
 </manifest>
