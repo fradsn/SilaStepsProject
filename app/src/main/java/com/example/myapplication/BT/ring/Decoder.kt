@@ -7,6 +7,7 @@ object Decoder {
         val dia: Int = 0,
         val battery: Int = -1,
         val chargingStatus: Int = 0,
+        val calibrationStatus: Int = -1, // -1 = non presente, 0 = successo, >0 = errore
         val type: String
     )
 
@@ -23,6 +24,15 @@ object Decoder {
                 val status = parts[8].toInt(16) // Battery Status (0=normale, 1=bassa, 2=carica, 3=pieno)
                 val level = parts[9].toInt(16)  // Battery Level (0-100)
                 DecodedResult(battery = level, chargingStatus = status, type = "BATTERY")
+            } catch (e: Exception) { null }
+        }
+
+        // Decodifica Risposta Calibrazione Pressione (Sezione 3.5.4.4)
+        // L'anello risponde con ID=03, KEY=03. Il byte del risultato è in parts[4]
+        if (parts[0] == "03" && parts[1] == "03" && parts.size >= 5) {
+            return try {
+                val resCode = parts[4].toInt(16) // 0x00=Successo, 0x01=Parametri errati, 0x02=Dispositivo non in misurazione
+                DecodedResult(calibrationStatus = resCode, type = "CALIBRATION_RESULT")
             } catch (e: Exception) { null }
         }
 

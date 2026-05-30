@@ -9,10 +9,13 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Button
+import android.widget.EditText
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import com.example.myapplication.BT.ring.Decoder
 import com.example.myapplication.BT.ring.SmartRingManager
@@ -148,6 +151,67 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                 Toast.makeText(context, "Anello non connesso", Toast.LENGTH_SHORT).show()
             }
         }
+
+        // MODIFICA: Pressione prolungata per aprire la calibrazione medica
+        btnStartBP.setOnLongClickListener {
+            if (ringManager?.isConnected() == true) {
+                showCalibrationDialog()
+                true
+            } else {
+                Toast.makeText(context, "Anello non connesso", Toast.LENGTH_SHORT).show()
+                false
+            }
+        }
+    }
+
+    /**
+     * Costruisce ed espone una finestra di dialogo interattiva per l'immissione numerica
+     * dei parametri sistolici e diastolici di calibrazione.
+     */
+    private fun showCalibrationDialog() {
+        val context = context ?: return
+        val builder = AlertDialog.Builder(context)
+        builder.setTitle("Calibrazione Pressione")
+        builder.setMessage("Rimani fermo. Avvia la misurazione sull'anello e inserisci qui sotto i dati appena letti dallo sfigmomanometro a braccio:")
+
+        // Layout contenitore verticale per ospitare le EditText via codice
+        val linearLayout = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(60, 24, 60, 24)
+        }
+
+        val etSystolic = EditText(context).apply {
+            hint = "Pressione Sistolica (es. 120) [60-250]"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
+
+        val etDiastolic = EditText(context).apply {
+            hint = "Pressione Diastolica (es. 80) [40-150]"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
+
+        linearLayout.addView(etSystolic)
+        linearLayout.addView(etDiastolic)
+        builder.setView(linearLayout)
+
+        builder.setPositiveButton("Calibra") { dialog, _ ->
+            val sysStr = etSystolic.text.toString()
+            val diaStr = etDiastolic.text.toString()
+
+            if (sysStr.isNotEmpty() && diaStr.isNotEmpty()) {
+                val systolic = sysStr.toIntOrNull() ?: 0
+                val diastolic = diaStr.toIntOrNull() ?: 0
+
+                // Invia i dati strutturati direttamente al Bluetooth Manager
+                ringManager?.sendBloodPressureCalibration(systolic, diastolic)
+            } else {
+                Toast.makeText(context, "Inserisci entrambi i parametri per continuare", Toast.LENGTH_SHORT).show()
+            }
+            dialog.dismiss()
+        }
+
+        builder.setNegativeButton("Annulla") { dialog, _ -> dialog.dismiss() }
+        builder.show()
     }
 
     // =====================================================================================
@@ -227,6 +291,15 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                         lastBP = "${result.sys} / ${result.dia}"
                         tvBpValue.text = lastBP
                         gestoreStatistiche.salvaPressione(result.sys, result.dia)
+                    }
+                }
+                // MODIFICA: Ricezione ed interpretazione dei codici esito del firmware hardware
+                "CALIBRATION_RESULT" -> {
+                    when (result.calibrationStatus) {
+                        0 -> Toast.makeText(context, "Calibrazione completata con successo!", Toast.LENGTH_LONG).show()
+                        1 -> Toast.makeText(context, "Errore: Valori fuori scala o non validi", Toast.LENGTH_SHORT).show()
+                        2 -> Toast.makeText(context, "Calibrazione rifiutata: Avvia prima la misurazione Pressione", Toast.LENGTH_LONG).show()
+                        else -> Toast.makeText(context, "Errore di calibrazione sconosciuto", Toast.LENGTH_SHORT).show()
                     }
                 }
             }

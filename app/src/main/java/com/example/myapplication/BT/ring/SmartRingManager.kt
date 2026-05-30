@@ -248,6 +248,21 @@ class SmartRingManager private constructor(
         sendCommand(0x02.toByte(), 0x00.toByte(), byteArrayOf(0x47.toByte(), 0x43.toByte()))
     }
 
+    fun sendBloodPressureCalibration(systolic: Int, diastolic: Int) {
+        // Verifica dei range fisici imposti dal protocollo hardware prima dell'invio
+        if (systolic in 60..250 && diastolic in 40..150) {
+            val payload = byteArrayOf(
+                systolic.toByte(),
+                diastolic.toByte()
+            )
+            // Invia il comando: ID = 0x03 (APP Control), KEY = 0x03 (Blood Pressure Calibration)
+            sendCommand(0x03.toByte(), 0x03.toByte(), payload)
+        } else {
+            Log.e("SMART_RING", "Calibrazione annullata: valori fuori range (S=$systolic, D=$diastolic)")
+            listener.onError("Valori non validi (Sistolica: 60-250, Diastolica: 40-150)")
+        }
+    }
+
     fun syncUserInfo() {
         val payload = PacketManager.buildUserInfoPayload(context)
         sendCommand(0x01.toByte(), 0x01.toByte(), payload)
