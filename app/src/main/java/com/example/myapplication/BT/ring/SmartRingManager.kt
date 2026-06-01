@@ -17,7 +17,7 @@ class SmartRingManager private constructor(
     interface SmartRingListener {
         fun onConnected()
         fun onDisconnected()
-        fun onDataReceived(result: Decoder.DecodedResult) // Usa il risultato del tuo Decoder originale!
+        fun onDataReceived(result: Decoder.DecodedResult)
         fun onError(msg: String)
     }
 
@@ -46,12 +46,20 @@ class SmartRingManager private constructor(
     private var connected = false
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    private var currentMeasuringType: String? = null
+
     fun updateListener(newListener: SmartRingListener) {
         this.listener = newListener
     }
 
     fun isConnected(): Boolean = connected
     fun getAddress(): String = macAddress
+
+    // Espone all'esterno se l'hardware è impegnato in un task
+    fun isMeasuring(): Boolean = currentMeasuringType != null
+
+    // Permette di leggere l'esatta stringa identificativa della misurazione in corso
+    fun getActiveMeasurementType(): String? = currentMeasuringType
 
     @SuppressLint("MissingPermission")
     fun connect(runtimeContext: Context) {
@@ -62,11 +70,7 @@ class SmartRingManager private constructor(
         }
         try {
             val device = adapter.getRemoteDevice(macAddress)
-
-            // COPIA ESATTA VECCHIA PROCEDURA:
-            // Passiamo il runtimeContext (il fragment/activity) e usiamo il costruttore classico a 3 parametri!
             bluetoothGatt = device.connectGatt(runtimeContext.applicationContext, false, gattCallback)
-
         } catch (e: Exception) {
             listener.onError("Errore GATT: ${e.message}")
         }
@@ -74,17 +78,14 @@ class SmartRingManager private constructor(
 
     @SuppressLint("MissingPermission")
     fun disconnect() {
-        // 1. Invia subito i comandi hardware di stop
         stopAllMeasurements()
-
-        // 2. Attendi un secondo prima di smantellare la connessione BLE
         mainHandler.postDelayed({
             connected = false
             bluetoothGatt?.disconnect()
             bluetoothGatt?.close()
             bluetoothGatt = null
             mainHandler.post { listener.onDisconnected() }
-        }, 1000) // 1000 millisecondi di delay per salvare la coda di trasmissione
+        }, 1000)
     }
 
     private val gattCallback = object : BluetoothGattCallback() {
@@ -92,12 +93,8 @@ class SmartRingManager private constructor(
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 connected = true
-
-                // Forziamo l'aggiornamento UI e le configurazioni hardware sul Main Thread
                 mainHandler.post {
                     listener.onConnected()
-
-                    // Distanziamo di 300ms la richiesta di MTU per stabilizzare la connessione iniziale
                     mainHandler.postDelayed({
                         try {
                             gatt.requestMtu(512)
@@ -109,6 +106,7 @@ class SmartRingManager private constructor(
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 connected = false
                 bluetoothGatt = null
+                currentMeasuringType = null // Ripristino dello stato hardware alla disconnessione
                 mainHandler.post { listener.onDisconnected() }
             }
         }
@@ -117,21 +115,14 @@ class SmartRingManager private constructor(
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
             super.onMtuChanged(gatt, mtu, status)
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                // Avvia la ricerca delle funzionalità sul thread principale dopo un breve delay
-                mainHandler.postDelayed({
-                    gatt.discoverServices()
-                }, 300)
+                mainHandler.postDelayed({ gatt.discoverServices() }, 300)
             }
         }
 
         @SuppressLint("MissingPermission")
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                mainHandler.post {
-                    enableNotifications(gatt)
-                }
-
-                // Lasciamo il tempo alle notifiche CCCD di essere scritte prima di mandare i comandi
+                mainHandler.post { enableNotifications(gatt) }
                 mainHandler.postDelayed({
                     syncUserInfo()
                     requestBatteryLevel()
@@ -142,15 +133,23 @@ class SmartRingManager private constructor(
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
             val data = characteristic.value ?: return
             val hex = data.joinToString(" ") { String.format("%02X", it) }
-
             Decoder.decode(hex)?.let { decodedResult ->
-                mainHandler.post {
-                    listener.onDataReceived(decodedResult)
+                when (decodedResult.type) {
+                    "O2", "SPO2" -> {
+                            currentMeasuringType = null
+                            Log.d("SMART_RING", "Misurazione SpO2 completata. Stato resettato.")
+                    }
+                    "PRESSURE", "BP" -> {
+                            currentMeasuringType = null
+                            Log.d("SMART_RING", "Misurazione Pressione completata. Stato resettato.")
+                    }
+                    // Nota: Non resettiamo qui il "BPM" perché è uno stream continuo
+                    // e si deve stoppare solo con stopAllMeasurements()
                 }
+                mainHandler.post { listener.onDataReceived(decodedResult) }
             }
         }
 
-        // Risposta asincrona del descrittore (Aiuta a stabilizzare la sequenza hardware)
         override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
             super.onDescriptorWrite(gatt, descriptor, status)
             Log.d("SMART_RING", "Descrittore scritto con stato: $status")
@@ -165,35 +164,21 @@ class SmartRingManager private constructor(
             return
         }
 
-        // Attiviamo il primo canale di controllo (Command Control)
         val charControl = service.getCharacteristic(PacketManager.CHAR_COMMAND_CONTROL)
-        if (charControl != null) {
-            setIndicate(gatt, charControl)
-        } else {
-            Log.e("SMART_RING", "Caratteristica CHAR_COMMAND_CONTROL non trovata!")
-        }
+        if (charControl != null) setIndicate(gatt, charControl)
 
-        // Ritardiamo il secondo canale per evitare collisioni nello stack Bluetooth di Android
         mainHandler.postDelayed({
             val charUpload = service.getCharacteristic(PacketManager.CHAR_DATA_UPLOAD)
-            if (charUpload != null) {
-                setIndicate(gatt, charUpload)
-            } else {
-                Log.e("SMART_RING", "Caratteristica CHAR_DATA_UPLOAD non trovata!")
-            }
+            if (charUpload != null) setIndicate(gatt, charUpload)
         }, 600)
     }
 
     @SuppressLint("MissingPermission")
     private fun setIndicate(gatt: BluetoothGatt, char: BluetoothGattCharacteristic) {
         try {
-            // Abilitiamo la ricezione delle notifiche a livello locale nel telefono
             gatt.setCharacteristicNotification(char, true)
-
-            // Troviamo il descrittore standard universale (CCCD)
             val desc = char.getDescriptor(PacketManager.CCCD_UUID)
             if (desc != null) {
-                // Adattamento per compatibilità Android moderna (evita eccezioni hardware a runtime)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     gatt.writeDescriptor(desc, BluetoothGattDescriptor.ENABLE_INDICATION_VALUE)
                 } else {
@@ -202,8 +187,6 @@ class SmartRingManager private constructor(
                     gatt.writeDescriptor(desc)
                 }
                 Log.d("SMART_RING", "Notifiche registrate con successo per: ${char.uuid}")
-            } else {
-                Log.e("SMART_RING", "Descrittore CCCD nullo per la caratteristica: ${char.uuid}")
             }
         } catch (e: Exception) {
             Log.e("SMART_RING", "Errore critico durante setIndicate: ${e.message}")
@@ -213,19 +196,14 @@ class SmartRingManager private constructor(
     @SuppressLint("MissingPermission")
     private fun sendCommand(id: Byte, key: Byte, payload: ByteArray) {
         val gatt = bluetoothGatt
-        if (gatt == null || !connected) {
-            Log.e("SMART_RING", "Impossibile inviare comandi: GATT non connesso.")
-            return
-        }
+        if (gatt == null || !connected) return
 
         val service = gatt.getService(PacketManager.SERVICE_UUID)
         val char = service?.getCharacteristic(PacketManager.CHAR_COMMAND_CONTROL)
 
         if (char != null) {
             val packet = PacketManager.buildPacket(id, key, payload)
-
             try {
-                // Adattamento per i metodi di scrittura caratteristica moderni di Android
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     gatt.writeCharacteristic(char, packet, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
                 } else {
@@ -235,12 +213,9 @@ class SmartRingManager private constructor(
                     char.value = packet
                     gatt.writeCharacteristic(char)
                 }
-                Log.d("SMART_RING", "Comando inviato all'hardware: ID=$id, KEY=$key")
             } catch (e: Exception) {
                 Log.e("SMART_RING", "Errore durante l'invio del pacchetto: ${e.message}")
             }
-        } else {
-            Log.e("SMART_RING", "Impossibile inviare comandi: canale di scrittura nullo.")
         }
     }
 
@@ -249,16 +224,10 @@ class SmartRingManager private constructor(
     }
 
     fun sendBloodPressureCalibration(systolic: Int, diastolic: Int) {
-        // Verifica dei range fisici imposti dal protocollo hardware prima dell'invio
         if (systolic in 60..250 && diastolic in 40..150) {
-            val payload = byteArrayOf(
-                systolic.toByte(),
-                diastolic.toByte()
-            )
-            // Invia il comando: ID = 0x03 (APP Control), KEY = 0x03 (Blood Pressure Calibration)
+            val payload = byteArrayOf(systolic.toByte(), diastolic.toByte())
             sendCommand(0x03.toByte(), 0x03.toByte(), payload)
         } else {
-            Log.e("SMART_RING", "Calibrazione annullata: valori fuori range (S=$systolic, D=$diastolic)")
             listener.onError("Valori non validi (Sistolica: 60-250, Diastolica: 40-150)")
         }
     }
@@ -269,6 +238,7 @@ class SmartRingManager private constructor(
     }
 
     fun startHeartRateMeasurement() {
+        currentMeasuringType = "BPM"
         sendCommand(0x03.toByte(), 0x0C.toByte(), byteArrayOf(0x01, 0x01))
         mainHandler.postDelayed({
             sendCommand(0x03.toByte(), 0x09.toByte(), byteArrayOf(0x01, 0x01, 0x01))
@@ -276,6 +246,7 @@ class SmartRingManager private constructor(
     }
 
     fun startSpO2Measurement() {
+        currentMeasuringType = "O2"
         sendCommand(0x03.toByte(), 0x0C.toByte(), byteArrayOf(0x01, 0x01))
         mainHandler.postDelayed({
             sendCommand(0x03.toByte(), 0x2F.toByte(), byteArrayOf(0x01, 0x02))
@@ -283,6 +254,7 @@ class SmartRingManager private constructor(
     }
 
     fun startBloodPressureMeasurement() {
+        currentMeasuringType = "PRESSURE"
         sendCommand(0x03.toByte(), 0x0C.toByte(), byteArrayOf(0x01, 0x01))
         mainHandler.postDelayed({
             sendCommand(0x03.toByte(), 0x2F.toByte(), byteArrayOf(0x01, 0x01))
@@ -290,6 +262,7 @@ class SmartRingManager private constructor(
     }
 
     fun stopAllMeasurements() {
+        currentMeasuringType = null // Reset dello stato
         sendCommand(0x03.toByte(), 0x09.toByte(), byteArrayOf(0x00, 0x01, 0x01))
         mainHandler.postDelayed({
             sendCommand(0x03.toByte(), 0x0C.toByte(), byteArrayOf(0x00, 0x01))

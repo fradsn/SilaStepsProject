@@ -7,6 +7,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -32,16 +34,24 @@ import com.example.myapplication.Motion.session.MotionSessionManager
 import com.example.myapplication.Motion.session.MotionUiState
 import com.example.myapplication.R
 import com.example.myapplication.UI.Login
+import com.example.myapplication.service.HealthMonitoringService
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.card.MaterialCardView
 import com.google.firebase.auth.FirebaseAuth
 
 class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSessionManager.Observer {
 
-    private var ringManager: SmartRingManager? = null
-
     private var tvBatteryLevelInSheet: TextView? = null
     private var deviceAdapter: DeviceAdapter? = null
+
+    // TIMER CICLICO (UI Polling) per rinfrescare lo stato della batteria nel Bottom Sheet
+    private val pollHandler = Handler(Looper.getMainLooper())
+    private val pollRunnable = object : Runnable {
+        override fun run() {
+            rinfrescaDatiInRealtime()
+            pollHandler.postDelayed(this, 2000) // Interroga le SharedPreferences ogni 2 secondi
+        }
+    }
 
     // Launcher asincrono per la richiesta dei permessi nativi
     private val requestBlePermissionsLauncher = registerForActivityResult(
@@ -59,37 +69,13 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
     }
 
     // =====================================================================================
-    // GESTIONE SMART RING LISTENER CALLBACKS
+    // GESTIONE SMART RING LISTENER CALLBACKS (Formale: l'ascolto primario è delegato al Service)
     // =====================================================================================
-    override fun onConnected() {
-        activity?.runOnUiThread {
-            Toast.makeText(context, "Smart Ring Connesso!", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    override fun onDisconnected() {
-        activity?.runOnUiThread {
-            Toast.makeText(context, "Smart Ring Disconnesso", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    override fun onDataReceived(result: Decoder.DecodedResult) {
-        if (result.type == "BATTERY") {
-            updateBatteryUI(result.battery, result.chargingStatus)
-        }
-    }
-
+    override fun onConnected() {}
+    override fun onDisconnected() {}
+    override fun onDataReceived(result: Decoder.DecodedResult) {}
     override fun onError(msg: String) {
         activity?.runOnUiThread { Log.e("SMART_RING", "Errore: $msg") }
-    }
-
-    private fun updateBatteryUI(percent: Int, status: Int) {
-        activity?.runOnUiThread {
-            if (tvBatteryLevelInSheet != null) {
-                val chargingIcon = if (status == 0x02) "⚡ " else ""
-                tvBatteryLevelInSheet?.text = "Batteria: $chargingIcon$percent%"
-            }
-        }
     }
 
     // =====================================================================================
@@ -149,10 +135,11 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
         }
 
         view.findViewById<MaterialCardView>(R.id.menuConnectedDevices)?.setOnClickListener {
-            val ringConnected = ringManager?.isConnected() == true || SmartRingManager.getActiveInstance()?.isConnected() == true
+            val ringConnected = SmartRingManager.getActiveInstance()?.isConnected() == true
             val shimmerConnected = MotionSessionManager.isShimmerConnected()
 
             if (ringConnected || shimmerConnected) {
+                // Chiediamo all'hardware di aggiornare la batteria: la risposta verrà catturata dal Service e scritta nelle Prefs
                 SmartRingManager.getActiveInstance()?.requestBatteryLevel()
                 showConnectedDeviceBottomSheet()
             } else {
@@ -162,6 +149,9 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
 
         view.findViewById<ImageButton>(R.id.logout_button)?.setOnClickListener {
             FirebaseAuth.getInstance().signOut()
+
+            // Interrompiamo definitivamente il servizio di monitoraggio in background al logout
+            context?.stopService(Intent(context, HealthMonitoringService::class.java))
 
             // Smantellamento dei Singleton hardware e rimozione dei listener ML
             SmartRingManager.getActiveInstance()?.disconnect()
@@ -195,8 +185,15 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
             cardRing.visibility = View.VISIBLE
             tvRingName.text = "Smart Ring"
             tvRingAddress.text = activeRing.getAddress()
+
+            // Prima lettura immediata del valore memorizzato nelle preferenze prima che parta il ciclo del timer
+            val sharedPref = requireContext().getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
+            tvBatteryLevelInSheet?.text = sharedPref.getString("last_battery_level", "Batteria: --")
+
             btnDisconnectRing.setOnClickListener {
                 activeRing.disconnect()
+                // Se scolleghiamo l'anello, interrompiamo anche il Service
+                context?.stopService(Intent(context, HealthMonitoringService::class.java))
                 cardRing.visibility = View.GONE
                 if (cardShimmer.visibility == View.GONE) dialog.dismiss()
             }
@@ -243,13 +240,18 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
                 MotionSessionManager.connectToShimmer(requireContext(), device.address)
                 Toast.makeText(requireContext(), "Connessione a Shimmer in corso...", Toast.LENGTH_SHORT).show()
             } else {
-                ringManager = SmartRingManager.getInstance(
-                    requireContext(),
-                    device.address,
-                    this
-                )
-                ringManager?.connect(requireContext())
-                Toast.makeText(requireContext(), "Connessione Smart Ring in corso...", Toast.LENGTH_SHORT).show()
+                // FIX CRITICO: Invece di istanziare e connettere l'anello dal Fragment rubando il Listener,
+                // passiamo il testimone al Service tramite Intent. Sarà il Service ad attivare l'anello e a fare da ascoltatore fisso.
+                val serviceIntent = Intent(context, HealthMonitoringService::class.java).apply {
+                    putExtra("MAC_ADDRESS", device.address)
+                }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context?.startForegroundService(serviceIntent)
+                } else {
+                    context?.startService(serviceIntent)
+                }
+                Toast.makeText(requireContext(), "Inizializzazione connessione tramite Service...", Toast.LENGTH_SHORT).show()
             }
             dialog.dismiss()
         }
@@ -354,29 +356,44 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
         dialog.show()
     }
 
+    /**
+     * Metodo di Polling attivato ciclicamente dall'Handler
+     */
+    private fun rinfrescaDatiInRealtime() {
+        if (!isAdded) return
+        // Se l'utente ha aperto il Bottom Sheet della connessione e la TextView della batteria esiste...
+        if (tvBatteryLevelInSheet != null) {
+            val sharedPref = requireContext().getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
+            val livelloBatteria = sharedPref.getString("last_battery_level", "Batteria: --")
+
+            activity?.runOnUiThread {
+                tvBatteryLevelInSheet?.text = livelloBatteria
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
 
-        val activeRing = SmartRingManager.getActiveInstance()
-        if (activeRing != null && activeRing.isConnected()) {
-            ringManager = activeRing
-            ringManager?.updateListener(this)
-        }
+        // Avviamo il timer di polling grafico ogni 2 secondi
+        pollHandler.post(pollRunnable)
+
+        // FIX LOGICA: Rimosso completamente ringManager?.updateListener(this).
+        // Lasciamo che il Service continui a fare da ascoltatore fisso hardware in totale autonomia.
     }
 
     override fun onPause() {
         super.onPause()
-        ringManager?.updateListener(object : SmartRingManager.SmartRingListener {
-            override fun onConnected() {}
-            override fun onDisconnected() {}
-            override fun onDataReceived(result: Decoder.DecodedResult) {}
-            override fun onError(msg: String) {}
-        })
+
+        // Interrompiamo il timer di polling grafico all'uscita dal fragment
+        pollHandler.removeCallbacks(pollRunnable)
+
+        // FIX LOGICA: Rimosso lo scollegamento (updateListener(object...)) che andava ad accecare il Service.
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
-        // Rimozione dell'Observer ad ogni distruzione del frammento per evitare perdite di memoria
         MotionSessionManager.removeObserver(this)
+        pollHandler.removeCallbacks(pollRunnable)
     }
 }
