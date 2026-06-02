@@ -1,4 +1,4 @@
-package com.example.myapplication.service
+package com.example.myapplication.services
 
 import android.content.Context
 import com.example.myapplication.db.dao.BpmDao
@@ -29,4 +29,10 @@ class GestoreStatistiche private constructor(context: Context) {
     fun getBpm() = bpmDao.getAll()
     fun getPressioni() = pressureDao.getAll()
     fun getO2() = o2Dao.getAll()
+
+    fun deleteOlderThan(timestamp: Long) {
+        bpmDao.deleteOlderThan(timestamp)
+        pressureDao.deleteOlderThan(timestamp)
+        o2Dao.deleteOlderThan(timestamp)
+    }
 }

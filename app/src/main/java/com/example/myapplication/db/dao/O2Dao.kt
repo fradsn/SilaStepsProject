@@ -34,4 +34,9 @@ class O2Dao(context: Context) {
         }
         return list
     }
+
+    fun deleteOlderThan(timestamp: Long) {
+        db.delete("o2", "timestamp < ?", arrayOf(timestamp.toString()))
+    }
+
 }

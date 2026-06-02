@@ -1,4 +1,4 @@
-package com.example.myapplication.service
+package com.example.myapplication.services
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -12,7 +12,6 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.myapplication.BT.ring.Decoder
 import com.example.myapplication.BT.ring.SmartRingManager
-import com.example.myapplication.BT.Shimmer.ShimmerClassicManager
 import com.example.myapplication.R
 
 class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener {

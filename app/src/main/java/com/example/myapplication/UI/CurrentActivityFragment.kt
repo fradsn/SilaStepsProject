@@ -26,8 +26,8 @@ import com.example.myapplication.BT.ring.SmartRingManager
 import com.example.myapplication.Motion.session.MotionSessionManager
 import com.example.myapplication.Motion.session.MotionUiState
 import com.example.myapplication.R
-import com.example.myapplication.service.GestoreStatistiche
-import com.example.myapplication.service.HealthMonitoringService
+import com.example.myapplication.services.GestoreStatistiche
+import com.example.myapplication.services.HealthMonitoringService
 
 class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSessionManager.Observer {
 

@@ -39,4 +39,9 @@ class BpmDao(context: Context) {
         }
         return list
     }
+
+    fun deleteOlderThan(timestamp: Long) {
+        db.delete("bpm", "timestamp < ?", arrayOf(timestamp.toString()))
+    }
+
 }

@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -13,16 +14,17 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ArrayAdapter
 import android.widget.Button
-import android.widget.EditText
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.ProgressBar
-import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
+import androidx.core.view.isGone
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -33,8 +35,7 @@ import com.example.myapplication.BT.ring.SmartRingManager
 import com.example.myapplication.Motion.session.MotionSessionManager
 import com.example.myapplication.Motion.session.MotionUiState
 import com.example.myapplication.R
-import com.example.myapplication.UI.Login
-import com.example.myapplication.service.HealthMonitoringService
+import com.example.myapplication.services.HealthMonitoringService
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.card.MaterialCardView
 import com.google.firebase.auth.FirebaseAuth
@@ -42,6 +43,7 @@ import com.google.firebase.auth.FirebaseAuth
 class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSessionManager.Observer {
 
     private var tvBatteryLevelInSheet: TextView? = null
+    private val auth = FirebaseAuth.getInstance()
     private var deviceAdapter: DeviceAdapter? = null
 
     // TIMER CICLICO (UI Polling) per rinfrescare lo stato della batteria nel Bottom Sheet
@@ -54,6 +56,7 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
     }
 
     // Launcher asincrono per la richiesta dei permessi nativi
+    @RequiresApi(Build.VERSION_CODES.S)
     private val requestBlePermissionsLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -93,11 +96,38 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
-        return inflater.inflate(R.layout.fragment_profile, container, false)
+        val sheetView = inflater.inflate(R.layout.fragment_profile, container, false)
+
+        aggiornaUI(sheetView)
+
+        return sheetView
     }
 
+    private fun aggiornaUI(sheetView: View) {
+        val userId = auth.currentUser?.uid ?: "user"
+
+        val sharedPref = sheetView.context.getSharedPreferences("UserData_$userId", Context.MODE_PRIVATE)
+        val savedName = sharedPref.getString("name", "")
+        val savedImageUri = sharedPref.getString("profile_image_uri", null)
+
+        sheetView.findViewById<TextView>(R.id.profile_email).text = "Benvenuto $savedName"
+        val profileImage = sheetView.findViewById<ImageView>(R.id.profile_image)
+        if (savedImageUri.isNullOrEmpty()) {
+            profileImage.setImageResource(R.drawable.user_svgrepo_com)
+            profileImage.setColorFilter(Color.WHITE)
+        } else {
+            profileImage.clearColorFilter()
+            profileImage.setImageURI(savedImageUri.toUri())
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        parentFragmentManager.setFragmentResultListener("refresh_profile", this) { _, _ ->
+            aggiornaUI(view)
+        }
 
         // Inizializzazione del core di Machine Learning dell'applicazione
         MotionSessionManager.initialize(requireContext())
@@ -148,7 +178,7 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
         }
 
         view.findViewById<ImageButton>(R.id.logout_button)?.setOnClickListener {
-            FirebaseAuth.getInstance().signOut()
+            auth.signOut()
 
             // Interrompiamo definitivamente il servizio di monitoraggio in background al logout
             context?.stopService(Intent(context, HealthMonitoringService::class.java))
@@ -195,7 +225,7 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
                 // Se scolleghiamo l'anello, interrompiamo anche il Service
                 context?.stopService(Intent(context, HealthMonitoringService::class.java))
                 cardRing.visibility = View.GONE
-                if (cardShimmer.visibility == View.GONE) dialog.dismiss()
+                if (cardShimmer.isGone) dialog.dismiss()
             }
         } else {
             cardRing.visibility = View.GONE
@@ -209,7 +239,7 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
             btnDisconnectShimmer.setOnClickListener {
                 MotionSessionManager.disconnectShimmer()
                 cardShimmer.visibility = View.GONE
-                if (cardRing.visibility == View.GONE) dialog.dismiss()
+                if (cardRing.isGone) dialog.dismiss()
             }
         } else {
             cardShimmer.visibility = View.GONE
@@ -290,70 +320,8 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
     }
 
     private fun showUserInfoBottomSheet() {
-        val dialog = BottomSheetDialog(requireContext())
-        val sheetView = layoutInflater.inflate(R.layout.dialog_user_info, null)
-
-        val spinnerGender = sheetView.findViewById<Spinner>(R.id.spinnerGender)
-        val editName = sheetView.findViewById<EditText>(R.id.editName)
-        val editSurname = sheetView.findViewById<EditText>(R.id.editSurname)
-        val editHeight = sheetView.findViewById<EditText>(R.id.editHeight)
-        val editWeight = sheetView.findViewById<EditText>(R.id.editWeight)
-        val editAge = sheetView.findViewById<EditText>(R.id.editAge)
-        val btnSaveInfo = sheetView.findViewById<Button>(R.id.btnSaveInfo)
-
-        val genderOptions = arrayOf("Maschio", "Femmina", "Altro")
-        val spinnerAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, genderOptions)
-        spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        spinnerGender?.adapter = spinnerAdapter
-
-        val auth = FirebaseAuth.getInstance()
-        val userId = auth.currentUser?.uid ?: "user"
-        val sharedPref = requireContext().getSharedPreferences("UserData_$userId", Context.MODE_PRIVATE)
-
-        val savedGenderPos = sharedPref.getInt("gender_pos", 0)
-        val savedAge = sharedPref.getString("age", "")
-        val savedHeight = sharedPref.getString("height", "")
-        val savedWeight = sharedPref.getString("weight", "")
-        val savedName = sharedPref.getString("name", "")
-        val savedSurname = sharedPref.getString("surname", "")
-
-        spinnerGender?.setSelection(savedGenderPos)
-        editAge?.setText(savedAge)
-        editHeight?.setText(savedHeight)
-        editWeight?.setText(savedWeight)
-        editName?.setText(savedName)
-        editSurname?.setText(savedSurname)
-
-        btnSaveInfo?.setOnClickListener {
-            val ageStr = editAge?.text.toString().trim()
-            val heightStr = editHeight?.text.toString().trim()
-            val weightStr = editWeight?.text.toString().trim()
-            val nameStr = editName?.text.toString().trim()
-            val surnameStr = editSurname?.text.toString().trim()
-            val genderPos = spinnerGender?.selectedItemPosition ?: 0
-
-            if (ageStr.isNotEmpty() && heightStr.isNotEmpty() && weightStr.isNotEmpty()) {
-                sharedPref.edit().apply {
-                    putInt("gender_pos", genderPos)
-                    putString("age", ageStr)
-                    putString("height", heightStr)
-                    putString("weight", weightStr)
-                    putString("name", nameStr)
-                    putString("surname", surnameStr)
-                    apply()
-                }
-
-                SmartRingManager.getActiveInstance()?.syncUserInfo()
-
-                Toast.makeText(requireContext(), "Informazioni salvate localmente!", Toast.LENGTH_SHORT).show()
-                dialog.dismiss()
-            } else {
-                Toast.makeText(requireContext(), "Compila obbligatoriamente Età, Altezza e Peso", Toast.LENGTH_LONG).show()
-            }
-        }
-
-        dialog.setContentView(sheetView)
-        dialog.show()
+        val sheet = UserInfoBottomSheet()
+        sheet.show(parentFragmentManager, "UserInfoBottomSheet")
     }
 
     /**

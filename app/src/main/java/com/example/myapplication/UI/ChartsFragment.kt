@@ -7,7 +7,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.fragment.app.Fragment
-import com.example.myapplication.service.GestoreStatistiche
+import com.example.myapplication.services.GestoreStatistiche
+import com.example.myapplication.services.TimeAxisFormatter
 import com.example.myapplication.Motion.session.MotionSessionManager
 import com.example.myapplication.Motion.session.MotionUiState
 import com.example.myapplication.R
@@ -142,28 +143,41 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
         val ultimo = lista.last()
         tvCurrentBpm.text = ultimo.bpm.toString()
 
-        // Prepara dati grafico
+        // Lista timestamp
+        val timestamps = lista.map { it.timestamp }
+
+        // Entries
         val entries = lista.mapIndexed { index, item ->
             Entry(index.toFloat(), item.bpm.toFloat())
         }
 
         val dataSet = LineDataSet(entries, "BPM").apply {
             color = Color.parseColor("#FF9800")
-            setCircleColor(Color.WHITE)
             lineWidth = 2f
-            circleRadius = 3f
-            valueTextColor = Color.WHITE
             mode = LineDataSet.Mode.CUBIC_BEZIER
+
+            valueTextColor = Color.WHITE
+            setCircleColor(Color.WHITE)
+            circleRadius = 3f
+
+            setDrawCircles(false)
+            setDrawValues(false)
         }
 
         BPMChart.apply {
             data = LineData(dataSet)
             description.isEnabled = false
             axisRight.isEnabled = false
+
             xAxis.position = XAxis.XAxisPosition.BOTTOM
             xAxis.textColor = Color.WHITE
             axisLeft.textColor = Color.WHITE
             legend.textColor = Color.WHITE
+
+            xAxis.valueFormatter = TimeAxisFormatter(timestamps)
+            xAxis.granularity = 1f
+            xAxis.labelRotationAngle = -45f
+
             invalidate()
         }
     }
@@ -175,27 +189,39 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
         val ultimo = lista.last()
         tvLastO2.text = "${ultimo.value} %"
 
+        val timestamps = lista.map { it.timestamp }
+
         val entries = lista.mapIndexed { index, item ->
             Entry(index.toFloat(), item.value.toFloat())
         }
 
         val dataSet = LineDataSet(entries, "SpO2").apply {
             color = Color.parseColor("#4CAF50")
-            setCircleColor(Color.WHITE)
             lineWidth = 2f
-            circleRadius = 3f
-            valueTextColor = Color.WHITE
             mode = LineDataSet.Mode.CUBIC_BEZIER
+
+            valueTextColor = Color.WHITE
+            setCircleColor(Color.WHITE)
+            circleRadius = 3f
+
+            setDrawCircles(false)
+            setDrawValues(false)
         }
 
         O2Chart.apply {
             data = LineData(dataSet)
             description.isEnabled = false
             axisRight.isEnabled = false
+
             xAxis.position = XAxis.XAxisPosition.BOTTOM
             xAxis.textColor = Color.WHITE
             axisLeft.textColor = Color.WHITE
             legend.textColor = Color.WHITE
+
+            xAxis.valueFormatter = TimeAxisFormatter(timestamps)
+            xAxis.granularity = 1f
+            xAxis.labelRotationAngle = -45f
+
             invalidate()
         }
     }
@@ -207,6 +233,8 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
         val ultimo = lista.last()
         tvLastPressure.text = "${ultimo.systolic}/${ultimo.diastolic}"
 
+        val timestamps = lista.map { it.timestamp }
+
         val entriesSys = lista.mapIndexed { index, item ->
             Entry(index.toFloat(), item.systolic.toFloat())
         }
@@ -217,30 +245,44 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
 
         val sysSet = LineDataSet(entriesSys, "Sistolica").apply {
             color = Color.parseColor("#E91E63")
-            setCircleColor(Color.WHITE)
             lineWidth = 2f
-            circleRadius = 3f
-            valueTextColor = Color.WHITE
             mode = LineDataSet.Mode.CUBIC_BEZIER
+
+            valueTextColor = Color.WHITE
+            setCircleColor(Color.WHITE)
+            circleRadius = 3f
+
+            setDrawCircles(false)
+            setDrawValues(false)
         }
 
         val diaSet = LineDataSet(entriesDia, "Diastolica").apply {
             color = Color.parseColor("#03A9F4")
-            setCircleColor(Color.WHITE)
             lineWidth = 2f
-            circleRadius = 3f
-            valueTextColor = Color.WHITE
             mode = LineDataSet.Mode.CUBIC_BEZIER
+
+            valueTextColor = Color.WHITE
+            setCircleColor(Color.WHITE)
+            circleRadius = 3f
+
+            setDrawCircles(false)
+            setDrawValues(false)
         }
 
         pressureChart.apply {
             data = LineData(sysSet, diaSet)
             description.isEnabled = false
             axisRight.isEnabled = false
+
             xAxis.position = XAxis.XAxisPosition.BOTTOM
             xAxis.textColor = Color.WHITE
             axisLeft.textColor = Color.WHITE
             legend.textColor = Color.WHITE
+
+            xAxis.valueFormatter = TimeAxisFormatter(timestamps)
+            xAxis.granularity = 1f
+            xAxis.labelRotationAngle = -45f
+
             invalidate()
         }
     }

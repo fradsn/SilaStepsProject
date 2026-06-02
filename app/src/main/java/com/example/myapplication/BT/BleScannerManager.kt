@@ -1,7 +1,6 @@
 package com.example.myapplication.BT
 
 import android.annotation.SuppressLint
-import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
@@ -11,7 +10,6 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
-import com.example.myapplication.BT.DeviceAdapter
 
 object BleScannerManager {
 

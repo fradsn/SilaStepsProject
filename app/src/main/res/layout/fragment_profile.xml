@@ -12,7 +12,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:layout_marginBottom="32dp">
+        android:layout_marginBottom="16dp">
 
         <TextView
             android:layout_width="wrap_content"
@@ -39,12 +39,12 @@
 
     <!-- ICONA PROFILO -->
     <ImageView
-        android:layout_width="110dp"
-        android:layout_height="110dp"
+        android:id="@+id/profile_image"
+        android:layout_width="130dp"
+        android:layout_height="130dp"
         android:layout_gravity="center"
-        android:src="@drawable/user_svgrepo_com"
-        android:padding="10dp"
-        app:tint="@color/white" />
+        android:scaleType="centerCrop"
+        android:src="@drawable/user_svgrepo_com" />
 
     <!-- EMAIL -->
     <TextView
@@ -56,7 +56,6 @@
         android:textColor="@color/white"
         android:textSize="35sp"
         android:textStyle="bold"
-        android:layout_marginTop="16dp"
         android:layout_marginBottom="20dp" />
 
     <!-- MENU BUTTON 1 -->

@@ -36,4 +36,9 @@ class PressureDao(context: Context) {
         }
         return list
     }
+
+    fun deleteOlderThan(timestamp: Long) {
+        db.delete("pressure", "timestamp < ?", arrayOf(timestamp.toString()))
+    }
+
 }
