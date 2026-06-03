@@ -2,6 +2,8 @@ package com.example.myapplication.UI
 
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -44,6 +46,16 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
 
     private lateinit var gestoreStatistiche: GestoreStatistiche
 
+    // LOGICA DI RICHIESTA CICLICA (UI Polling Timer)
+    private val pollHandler = Handler(Looper.getMainLooper())
+    private val pollRunnable = object : Runnable {
+        override fun run() {
+            aggiornaGrafici()
+            // Ripete l'interrogazione ogni 2000 millisecondi (2 secondi)
+            pollHandler.postDelayed(this, 2000)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         gestoreStatistiche = GestoreStatistiche.getInstance(requireContext())
@@ -75,14 +87,26 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
 
         MotionSessionManager.addObserver(this)
 
-        caricaBpm()
-        caricaO2()
-        caricaPressione()
+        // 1. Legge subito lo stato attuale del DB all'apertura
+        aggiornaGrafici()
+
+        // 2. AVVIA LA RICHIESTA CICLICA DI POLLING
+        pollHandler.post(pollRunnable)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        MotionSessionManager.removeObserver(this)
+
+        // IMPORTANTE: INTERROMPIAMO IL TIMER CICLICO quando l'utente esce dalla tab
+        pollHandler.removeCallbacks(pollRunnable)
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
         MotionSessionManager.removeObserver(this)
+        // IMPORTANTE: INTERROMPIAMO IL TIMER CICLICO quando l'utente esce dalla tab
+        pollHandler.removeCallbacks(pollRunnable)
     }
 
     override fun onMotionStateChanged(state: MotionUiState) {
@@ -285,6 +309,12 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
 
             invalidate()
         }
+    }
+
+    private fun aggiornaGrafici() {
+        caricaBpm()
+        caricaO2()
+        caricaPressione()
     }
 
 }

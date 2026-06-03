@@ -57,7 +57,7 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener {
     }
 
     // =====================================================================================
-    // RICEZIONE E SALVATAGGIO DEI PARAMETRI VITALI IN BACKGROUND (SCHERMO SPENTO)
+    // RICEZIONE E SALVATAGGIO DEI PARAMETRI VITALI IN BACKGROUND
     // =====================================================================================
     override fun onDataReceived(result: Decoder.DecodedResult) {
         Log.d(TAG, "Dato hardware intercettato nel Servizio: Tipo=${result.type}")
