@@ -23,7 +23,6 @@ class UserInfoBottomSheet : BottomSheetDialogFragment() {
 
     private lateinit var pickImageLauncher: ActivityResultLauncher<PickVisualMediaRequest>
     private var selectedImageUri: Uri? = null
-
     private var imgPreview: ImageView? = null
     private var spinnerGender: Spinner? = null
     private var editName: EditText? = null
@@ -33,6 +32,8 @@ class UserInfoBottomSheet : BottomSheetDialogFragment() {
     private var editAge: EditText? = null
     private var btnSaveInfo: Button? = null
     private var btnPickImage: Button? = null
+    private var btnDeleteImage: Button? = null
+    private var modImage: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,6 +46,7 @@ class UserInfoBottomSheet : BottomSheetDialogFragment() {
                 val savedUri = saveImageToInternalStorage(uri)
                 selectedImageUri = savedUri
                 imgPreview?.setImageURI(savedUri)
+                imgPreview?.clearColorFilter()
             }
         }
 
@@ -60,6 +62,7 @@ class UserInfoBottomSheet : BottomSheetDialogFragment() {
         // Collegamento view
         imgPreview = view.findViewById(R.id.imgProfilePreview)
         btnPickImage = view.findViewById(R.id.btnPickImage)
+        btnDeleteImage = view.findViewById(R.id.btnDeleteImage)
         spinnerGender = view.findViewById(R.id.spinnerGender)
         editName = view.findViewById(R.id.editName)
         editSurname = view.findViewById(R.id.editSurname)
@@ -99,6 +102,8 @@ class UserInfoBottomSheet : BottomSheetDialogFragment() {
         editName?.setText(savedName)
         editSurname?.setText(savedSurname)
 
+        selectedImageUri = savedImageUri?.toUri()
+
         if (savedImageUri.isNullOrEmpty()) {
             imgPreview?.setImageResource(R.drawable.user_svgrepo_com)
             imgPreview?.setColorFilter(Color.WHITE)
@@ -109,11 +114,24 @@ class UserInfoBottomSheet : BottomSheetDialogFragment() {
 
         // Apertura galleria
         btnPickImage?.setOnClickListener {
+            modImage = true
             pickImageLauncher.launch(
                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
             )
+            btnDeleteImage?.isEnabled = true
         }
 
+        btnDeleteImage?.setOnClickListener {
+            modImage = true
+            selectedImageUri = null
+
+            imgPreview?.setImageResource(R.drawable.user_svgrepo_com)
+            imgPreview?.setColorFilter(Color.WHITE)
+
+            btnDeleteImage?.isEnabled = false
+        }
+
+        btnDeleteImage?.isEnabled = selectedImageUri != null
 
         // Salvataggio dati
         btnSaveInfo?.setOnClickListener {
@@ -160,14 +178,22 @@ class UserInfoBottomSheet : BottomSheetDialogFragment() {
             putString("weight", weightStr)
             putString("name", nameStr)
             putString("surname", surnameStr)
-            putString("profile_image_uri", selectedImageUri?.toString())
+
+            if (selectedImageUri == null) {
+                putString("profile_image_uri", null)
+            } else {
+                putString("profile_image_uri", selectedImageUri.toString())
+            }
+
             apply()
         }
 
         SmartRingManager.getActiveInstance()?.syncUserInfo()
 
         // Notifica il Fragment padre
-        parentFragmentManager.setFragmentResult("refresh_profile", Bundle())
+        if (modImage){
+            parentFragmentManager.setFragmentResult("refresh_profile", Bundle())
+        }
 
         Toast.makeText(requireContext(), "Informazioni salvate!", Toast.LENGTH_SHORT).show()
         dismiss()
