@@ -136,15 +136,31 @@ class SmartRingManager private constructor(
             Decoder.decode(hex)?.let { decodedResult ->
                 when (decodedResult.type) {
                     "O2", "SPO2" -> {
-                            currentMeasuringType = null
-                            Log.d("SMART_RING", "Misurazione SpO2 completata. Stato resettato.")
+                        // IMPLEMENTAZIONE DEL DELAY DI 1 SECONDO
+                        // Mantiene lo stato attivo per 1 secondo dando tempo alla UI di intercettare l'ultimo dato utile salvato
+                        val TypeToReset = currentMeasuringType
+                        if (TypeToReset == "O2" || TypeToReset == "SPO2") {
+                            mainHandler.postDelayed({
+                                // Verifichiamo che nel frattempo l'utente non abbia avviato un'altra misura differente
+                                if (currentMeasuringType == TypeToReset) {
+                                    currentMeasuringType = null
+                                    Log.d("SMART_RING", "Misurazione SpO2 completata. Stato resettato dopo delay.")
+                                }
+                            }, 1000)
+                        }
                     }
                     "PRESSURE", "BP" -> {
-                            currentMeasuringType = null
-                            Log.d("SMART_RING", "Misurazione Pressione completata. Stato resettato.")
+                        // IMPLEMENTAZIONE DEL DELAY DI 1 SECONDO
+                        val TypeToReset = currentMeasuringType
+                        if (TypeToReset == "PRESSURE" || TypeToReset == "BP") {
+                            mainHandler.postDelayed({
+                                if (currentMeasuringType == TypeToReset) {
+                                    currentMeasuringType = null
+                                    Log.d("SMART_RING", "Misurazione Pressione completata. Stato resettato dopo delay.")
+                                }
+                            }, 1000)
+                        }
                     }
-                    // Nota: Non resettiamo qui il "BPM" perché è uno stream continuo
-                    // e si deve stoppare solo con stopAllMeasurements()
                 }
                 mainHandler.post { listener.onDataReceived(decodedResult) }
             }
@@ -262,7 +278,7 @@ class SmartRingManager private constructor(
     }
 
     fun stopAllMeasurements() {
-        currentMeasuringType = null // Reset dello stato
+        currentMeasuringType = null // Reset istantaneo immediato se forzato a mano
         sendCommand(0x03.toByte(), 0x09.toByte(), byteArrayOf(0x00, 0x01, 0x01))
         mainHandler.postDelayed({
             sendCommand(0x03.toByte(), 0x0C.toByte(), byteArrayOf(0x00, 0x01))

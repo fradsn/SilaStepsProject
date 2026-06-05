@@ -110,7 +110,7 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
         val savedName = sharedPref.getString("name", "")
         val savedImageUri = sharedPref.getString("profile_image_uri", null)
 
-        sheetView.findViewById<TextView>(R.id.profile_email).text = "Benvenuto $savedName"
+        sheetView.findViewById<TextView>(R.id.profile_email).text = "$savedName"
         val profileImage = sheetView.findViewById<ImageView>(R.id.profile_image)
         if (savedImageUri.isNullOrEmpty()) {
             profileImage.setImageResource(R.drawable.user_svgrepo_com)
