@@ -15,6 +15,7 @@ import com.example.myapplication.services.GestoreStatistiche
 import com.example.myapplication.services.TimeAxisFormatter
 import com.example.myapplication.Motion.session.MotionSessionManager
 import com.example.myapplication.Motion.session.MotionUiState
+import com.example.myapplication.BT.ring.SmartRingManager
 import com.example.myapplication.R
 import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.charts.PieChart
@@ -55,6 +56,11 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
     )
 
     private lateinit var gestoreStatistiche: GestoreStatistiche
+
+    // Flags per garantire che i dati storici vengano mostrati almeno una volta all'avvio
+    private var isBpmFirstLoad = true
+    private var isO2FirstLoad = true
+    private var isPressureFirstLoad = true
 
     // LOGICA DI RICHIESTA CICLICA (UI Polling Timer)
     private val pollHandler = Handler(Looper.getMainLooper())
@@ -111,7 +117,12 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
 
         MotionSessionManager.addObserver(this)
 
-        // 1. Legge subito lo stato attuale del DB all'apertura
+        // Resettiamo i flag al caricamento della View per forzare il primo riempimento dei grafici
+        isBpmFirstLoad = true
+        isO2FirstLoad = true
+        isPressureFirstLoad = true
+
+        // 1. Legge subito lo stato attuale del DB all'apertura (forzato dai flag true)
         aggiornaGrafici()
 
         // 2. AVVIA LA RICHIESTA CICLICA DI POLLING
@@ -396,10 +407,32 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
         }
     }
 
+    /**
+     * Ottimizzazione del ciclo di aggiornamento.
+     * Interroga lo SmartRingManager per aggiornare i grafici solo se l'hardware è attivo
+     * sulla specifica metrica, oppure se è il primo avvio del fragment (per mostrare lo storico).
+     */
     private fun aggiornaGrafici() {
-        caricaBpm()
-        caricaO2()
-        caricaPressione()
+        val ringManager = SmartRingManager.getActiveInstance()
+        val activeMeasurement = ringManager?.getActiveMeasurementType()
+
+        // 1. Ottimizzazione BPM (Aggiorna se è la prima volta o se l'anello sta misurando i BPM)
+        if (isBpmFirstLoad || activeMeasurement == "BPM") {
+            caricaBpm()
+            isBpmFirstLoad = false
+        }
+
+        // 2. Ottimizzazione SpO2 (Aggiorna se è la prima volta o se l'anello sta misurando O2)
+        if (isO2FirstLoad || activeMeasurement == "O2") {
+            caricaO2()
+            isO2FirstLoad = false
+        }
+
+        // 3. Ottimizzazione Pressione (Aggiorna se è la prima volta o se l'anello sta misurando PRESSURE)
+        if (isPressureFirstLoad || activeMeasurement == "PRESSURE") {
+            caricaPressione()
+            isPressureFirstLoad = false
+        }
     }
 }
 
