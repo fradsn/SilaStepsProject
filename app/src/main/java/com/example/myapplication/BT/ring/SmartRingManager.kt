@@ -157,7 +157,7 @@ class SmartRingManager private constructor(
                         // IMPLEMENTAZIONE DEL DELAY DI 1 SECONDO
                         // Mantiene lo stato attivo per 1 secondo dando tempo alla UI di intercettare l'ultimo dato utile salvato
                         val TypeToReset = currentMeasuringType
-                        if (TypeToReset == "O2" || TypeToReset == "SPO2") {
+                        if (TypeToReset == "O2" ) {
                             mainHandler.postDelayed({
                                 // Verifichiamo che nel frattempo l'utente non abbia avviato un'altra misura differente
                                 if (currentMeasuringType == TypeToReset) {
@@ -172,7 +172,7 @@ class SmartRingManager private constructor(
                         mainHandler.removeCallbacks(measurementWatchdogRunnable)
                         // IMPLEMENTAZIONE DEL DELAY
                         val TypeToReset = currentMeasuringType
-                        if (TypeToReset == "PRESSURE" || TypeToReset == "BP") {
+                        if (TypeToReset == "PRESSURE" ) {
                             mainHandler.postDelayed({
                                 if (currentMeasuringType == TypeToReset) {
                                     currentMeasuringType = null
@@ -209,12 +209,14 @@ class SmartRingManager private constructor(
                         }
                     }
                     "MEASUREMENT_FAILED" -> {
+                        //  Rimuoviamo immediatamente il Watchdog dei 60 secondi
+                        mainHandler.removeCallbacks(measurementWatchdogRunnable)
                         // GESTIONE FALLIMENTO: Resetti IMMEDIATAMENTE senza alcun delay.
                         currentMeasuringType = null
                         Log.w("SMART_RING", "Misurazione Pressione fallita dall'hardware. Stato sbloccato immediatamente.")
                     }
                     "END_ACK" -> {
-                        // Successo! Rimuoviamo immediatamente il Watchdog dei 60 secondi
+                        //  Rimuoviamo immediatamente il Watchdog dei 60 secondi
                         mainHandler.removeCallbacks(measurementWatchdogRunnable)
                         mainHandler.postDelayed({
                             // Se l'anello invia un ACK di chiusura sessione esplicito, puliamo lo stato.

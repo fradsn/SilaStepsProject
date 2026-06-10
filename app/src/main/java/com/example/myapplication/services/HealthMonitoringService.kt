@@ -68,13 +68,13 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener {
                     gestoreStatistiche.salvaBpm(result.value)
                 }
             }
-            "O2", "SPO2" -> {
+            "SPO2" -> {
                 if (result.value > 0) {
                     gestoreStatistiche.salvaO2(result.value)
                     Log.d(TAG, "Service ha salvato SpO2: ${result.value}")
                 }
             }
-            "PRESSURE", "BP" -> {
+            "BP" -> {
                 if (result.sys > 0) {
                     gestoreStatistiche.salvaPressione(result.sys, result.dia)
                     Log.d(TAG, "Service ha salvato Pressione: ${result.sys}/${result.dia}")
