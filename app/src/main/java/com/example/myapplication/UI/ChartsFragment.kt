@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -242,7 +243,7 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
             isDragEnabled = true
             setScaleEnabled(true)
             setPinchZoom(true)
-
+            legend.textColor = Color.WHITE
             setOnTouchListener { v, _ ->
                 v.parent.requestDisallowInterceptTouchEvent(true)
                 false
@@ -312,7 +313,7 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
             setTouchEnabled(true)
             isDragEnabled = true
             setScaleEnabled(true)
-
+            legend.textColor = Color.WHITE
             setOnTouchListener { v, _ ->
                 v.parent.requestDisallowInterceptTouchEvent(true)
                 false
@@ -382,7 +383,7 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
             setTouchEnabled(true)
             isDragEnabled = true
             setScaleEnabled(true)
-
+            legend.textColor = Color.WHITE
             setOnTouchListener { v, _ ->
                 v.parent.requestDisallowInterceptTouchEvent(true)
                 false
@@ -419,18 +420,21 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
         // 1. Ottimizzazione BPM (Aggiorna se è la prima volta o se l'anello sta misurando i BPM)
         if (isBpmFirstLoad || activeMeasurement == "BPM") {
             caricaBpm()
+            Log.d("SMART_RING", "Aggiornato grafico BPM")
             isBpmFirstLoad = false
         }
 
         // 2. Ottimizzazione SpO2 (Aggiorna se è la prima volta o se l'anello sta misurando O2)
         if (isO2FirstLoad || activeMeasurement == "O2") {
             caricaO2()
+            Log.d("SMART_RING", "Aggiornato grafico O2")
             isO2FirstLoad = false
         }
 
         // 3. Ottimizzazione Pressione (Aggiorna se è la prima volta o se l'anello sta misurando PRESSURE)
         if (isPressureFirstLoad || activeMeasurement == "PRESSURE") {
             caricaPressione()
+            Log.d("SMART_RING", "Aggiornato grafico pressione")
             isPressureFirstLoad = false
         }
     }

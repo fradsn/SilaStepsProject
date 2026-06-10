@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.widget.Toast
 
 class SmartRingManager private constructor(
     private val context: Context,
@@ -47,6 +48,21 @@ class SmartRingManager private constructor(
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private var currentMeasuringType: String? = null
+
+    private val measurementWatchdogRunnable = Runnable {
+        if (currentMeasuringType != null) {
+            val typeFailed = currentMeasuringType
+            currentMeasuringType = null // Sblocco immediato dell'hardware
+            Log.w("SMART_RING", "Watchdog attivato! Misurazione $typeFailed appesa oltre 60 secondi. Stato resettato forzatamente.")
+
+            // Inviamo una notifica visiva all'utente sul thread principale
+            mainHandler.post {
+                val msg = if (typeFailed == "PRESSURE") "Misurazione Pressione scaduta. Riprova restando fermo."
+                else "Misurazione Ossigeno scaduta. Riprova restando fermo."
+                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     fun updateListener(newListener: SmartRingListener) {
         this.listener = newListener
@@ -135,7 +151,9 @@ class SmartRingManager private constructor(
             val hex = data.joinToString(" ") { String.format("%02X", it) }
             Decoder.decode(hex)?.let { decodedResult ->
                 when (decodedResult.type) {
-                    "O2", "SPO2" -> {
+                    "SPO2" -> {
+                        // Successo! Rimuoviamo immediatamente il Watchdog dei 60 secondi
+                        mainHandler.removeCallbacks(measurementWatchdogRunnable)
                         // IMPLEMENTAZIONE DEL DELAY DI 1 SECONDO
                         // Mantiene lo stato attivo per 1 secondo dando tempo alla UI di intercettare l'ultimo dato utile salvato
                         val TypeToReset = currentMeasuringType
@@ -146,11 +164,13 @@ class SmartRingManager private constructor(
                                     currentMeasuringType = null
                                     Log.d("SMART_RING", "Misurazione SpO2 completata. Stato resettato dopo delay.")
                                 }
-                            }, 1000)
+                            }, 2000)
                         }
                     }
-                    "PRESSURE", "BP" -> {
-                        // IMPLEMENTAZIONE DEL DELAY DI 1 SECONDO
+                    "BP" -> {
+                        // Successo! Rimuoviamo immediatamente il Watchdog dei 60 secondi
+                        mainHandler.removeCallbacks(measurementWatchdogRunnable)
+                        // IMPLEMENTAZIONE DEL DELAY
                         val TypeToReset = currentMeasuringType
                         if (TypeToReset == "PRESSURE" || TypeToReset == "BP") {
                             mainHandler.postDelayed({
@@ -158,8 +178,50 @@ class SmartRingManager private constructor(
                                     currentMeasuringType = null
                                     Log.d("SMART_RING", "Misurazione Pressione completata. Stato resettato dopo delay.")
                                 }
-                            }, 1000)
+                            }, 2000)
                         }
+                    }
+                    "CALIBRATION_RESULT" -> {
+                        // Sblocchiamo immediatamente l'hardware poichè l'operazione di calibrazione si è conclusa
+                        currentMeasuringType = null
+                        Log.d("SMART_RING", "Ricevuto esito calibrazione hardware. Codice: ${decodedResult.calibrationStatus}")
+
+                        // Gestione dei codici di risposta ufficiali descritti nel Decoder (Sezione 3.5.4.4)
+                        mainHandler.post {
+                            when (decodedResult.calibrationStatus) {
+                                0 -> {
+                                    Log.d("SMART_RING", "Calibrazione della pressione eseguita con successo.")
+                                    android.widget.Toast.makeText(context, "Calibrazione riuscita!", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                                1 -> {
+                                    Log.e("SMART_RING", "Errore calibrazione: Parametri inviati errati.")
+                                    android.widget.Toast.makeText(context, "Calibrazione fallita: parametri errati.", android.widget.Toast.LENGTH_LONG).show()
+                                }
+                                2 -> {
+                                    Log.w("SMART_RING", "Errore calibrazione: Il dispositivo non è in modalità misurazione.")
+                                    android.widget.Toast.makeText(context, "Anello non pronto per la calibrazione.", android.widget.Toast.LENGTH_LONG).show()
+                                }
+                                else -> {
+                                    Log.e("SMART_RING", "Errore calibrazione sconosciuto. Codice hardware: ${decodedResult.calibrationStatus}")
+                                    android.widget.Toast.makeText(context, "Errore calibrazione sconosciuto.", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    }
+                    "MEASUREMENT_FAILED" -> {
+                        // GESTIONE FALLIMENTO: Resetti IMMEDIATAMENTE senza alcun delay.
+                        currentMeasuringType = null
+                        Log.w("SMART_RING", "Misurazione Pressione fallita dall'hardware. Stato sbloccato immediatamente.")
+                    }
+                    "END_ACK" -> {
+                        // Successo! Rimuoviamo immediatamente il Watchdog dei 60 secondi
+                        mainHandler.removeCallbacks(measurementWatchdogRunnable)
+                        mainHandler.postDelayed({
+                            // Se l'anello invia un ACK di chiusura sessione esplicito, puliamo lo stato.
+                            currentMeasuringType = null
+                            Log.d("SMART_RING", "Ricevuto END_ACK hardware. Stato resettato.")
+                        }, 2000)
+
                     }
                 }
                 mainHandler.post { listener.onDataReceived(decodedResult) }
@@ -255,6 +317,8 @@ class SmartRingManager private constructor(
 
     fun startHeartRateMeasurement() {
         currentMeasuringType = "BPM"
+        //Rimuoviamo immediatamente il Watchdog dei 60 secondi
+        mainHandler.removeCallbacks(measurementWatchdogRunnable)
         sendCommand(0x03.toByte(), 0x0C.toByte(), byteArrayOf(0x01, 0x01))
         mainHandler.postDelayed({
             sendCommand(0x03.toByte(), 0x09.toByte(), byteArrayOf(0x01, 0x01, 0x01))
@@ -263,6 +327,9 @@ class SmartRingManager private constructor(
 
     fun startSpO2Measurement() {
         currentMeasuringType = "O2"
+        // Fissiamo il Watchdog preventivo a 60 secondi
+        mainHandler.removeCallbacks(measurementWatchdogRunnable)
+        mainHandler.postDelayed(measurementWatchdogRunnable, 60000)
         sendCommand(0x03.toByte(), 0x0C.toByte(), byteArrayOf(0x01, 0x01))
         mainHandler.postDelayed({
             sendCommand(0x03.toByte(), 0x2F.toByte(), byteArrayOf(0x01, 0x02))
@@ -271,6 +338,9 @@ class SmartRingManager private constructor(
 
     fun startBloodPressureMeasurement() {
         currentMeasuringType = "PRESSURE"
+        // Fissiamo il Watchdog preventivo a 60 secondi
+        mainHandler.removeCallbacks(measurementWatchdogRunnable)
+        mainHandler.postDelayed(measurementWatchdogRunnable, 60000)
         sendCommand(0x03.toByte(), 0x0C.toByte(), byteArrayOf(0x01, 0x01))
         mainHandler.postDelayed({
             sendCommand(0x03.toByte(), 0x2F.toByte(), byteArrayOf(0x01, 0x01))
@@ -278,6 +348,7 @@ class SmartRingManager private constructor(
     }
 
     fun stopAllMeasurements() {
+        mainHandler.removeCallbacks(measurementWatchdogRunnable) // Cancella immediatamente il timer
         currentMeasuringType = null // Reset istantaneo immediato se forzato a mano
         sendCommand(0x03.toByte(), 0x09.toByte(), byteArrayOf(0x00, 0x01, 0x01))
         mainHandler.postDelayed({

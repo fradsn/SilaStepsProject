@@ -40,11 +40,23 @@ object Decoder {
             return try {
                 when (parts[1]) {
                     "01" -> DecodedResult(value = parts[4].toInt(16), type = "BPM")
-                    "02" -> DecodedResult(value = parts[4].toInt(16), type = "SPO2")
+                    "02" -> {
+                        val o2Value = parts[4].toInt(16)
+                        // Se il valore è 0, la misurazione dell'ossigeno è fallita
+                        if (o2Value == 0) {
+                            DecodedResult(type = "MEASUREMENT_FAILED")
+                        } else {
+                            DecodedResult(value = o2Value, type = "SPO2")
+                        }
+                    }
                     "03" -> {
                         val s = parts[4].toInt(16)
                         val d = if (parts.size > 5) parts[5].toInt(16) else 0
-                        DecodedResult(sys = s, dia = d, type = "BP")
+                        if (s == 0 && d == 0) {
+                            DecodedResult(sys = 0, dia = 0, type = "MEASUREMENT_FAILED")
+                        } else {
+                            DecodedResult(sys = s, dia = d, type = "BP")
+                        }
                     }
                     else -> null
                 }
