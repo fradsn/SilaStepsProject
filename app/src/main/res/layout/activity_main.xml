@@ -1,159 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout
+<androidx.coordinatorlayout.widget.CoordinatorLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background_dark"
-    tools:context=".UI.Login">
+    android:background="@color/background_dark">
 
-    <TextView
-        android:id="@+id/tvAppTitle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Sila Steps"
-        android:textColor="@color/white"
-        android:textSize="32sp"
-        android:textStyle="bold"
-        android:letterSpacing="0.05"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintVertical_bias="0.18" />
+    <include
+        android:id="@+id/includeContent"
+        layout="@layout/activity_monitor"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginBottom="80dp" />
 
-    <TextView
-        android:id="@+id/tvAppSubtitle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Accedi al tuo account"
-        android:textColor="@color/text_muted"
-        android:textSize="14sp"
-        android:layout_marginTop="6dp"
-        app:layout_constraintTop_toBottomOf="@id/tvAppTitle"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/bottom_nav_current"
+        style="@style/Widget.Material3.BottomNavigationView"
+        android:layout_width="match_parent"
+        android:layout_height="80dp"
+        android:layout_gravity="bottom"
+        android:background="@color/surface_dark"
+        app:backgroundTint="@color/surface_dark"
+        app:itemIconTint="@color/selector_bottom_nav"
+        app:itemTextColor="@color/selector_bottom_nav"
+        app:itemActiveIndicatorStyle="@style/Widget.Material3.BottomNavigationView.ActiveIndicator"
+        app:labelVisibilityMode="labeled"
+        app:menu="@menu/bottom_nav_menu" />
 
-    <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/tilEmail"
-        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:hint="Email"
-        android:textColorHint="@color/white"
-        android:layout_marginHorizontal="24dp"
-        android:layout_marginTop="40dp"
-        app:boxCornerRadiusTopStart="14dp"
-        app:boxCornerRadiusTopEnd="14dp"
-        app:boxCornerRadiusBottomStart="14dp"
-        app:boxCornerRadiusBottomEnd="14dp"
-        app:boxStrokeColor="@color/card_surface_alt"
-        app:boxBackgroundColor="@color/card_surface"
-        app:hintTextColor="@color/text_muted"
-        app:layout_constraintTop_toBottomOf="@id/tvAppSubtitle"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
-
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/user"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:inputType="textEmailAddress"
-            android:textColor="@color/white"
-            android:textSize="14sp"
-            android:paddingStart="16dp" />
-    </com.google.android.material.textfield.TextInputLayout>
-
-    <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/tilPassword"
-        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:hint="Password"
-        android:textColorHint="@color/white"
-        android:layout_marginHorizontal="24dp"
-        android:layout_marginTop="16dp"
-        app:boxCornerRadiusTopStart="14dp"
-        app:boxCornerRadiusTopEnd="14dp"
-        app:boxCornerRadiusBottomStart="14dp"
-        app:boxCornerRadiusBottomEnd="14dp"
-        app:boxStrokeColor="@color/card_surface_alt"
-        app:boxBackgroundColor="@color/card_surface"
-        app:hintTextColor="@color/text_muted"
-        app:passwordToggleEnabled="true"
-        app:layout_constraintTop_toBottomOf="@id/tilEmail"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
-
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/pass"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:inputType="textPassword"
-            android:textColor="@color/white"
-            android:textSize="14sp"
-            android:paddingStart="16dp" />
-    </com.google.android.material.textfield.TextInputLayout>
-
-    <TextView
-        android:id="@+id/resetPass"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Password dimenticata?"
-        android:textColor="@color/accent_teal"
-        android:textSize="13sp"
-        android:layout_marginTop="10dp"
-        android:layout_marginStart="24dp"
-        app:layout_constraintTop_toBottomOf="@id/tilPassword"
-        app:layout_constraintStart_toStartOf="parent" />
-
-    <Button
-        android:id="@+id/accessBt"
-        android:layout_width="0dp"
-        android:layout_height="52dp"
-        android:text="Accedi"
-        android:textSize="16sp"
-        android:textStyle="bold"
-        android:textColor="@color/white"
-        android:backgroundTint="@color/accent_teal"
-        android:layout_marginHorizontal="24dp"
-        android:layout_marginTop="28dp"
-        app:cornerRadius="14dp"
-        app:layout_constraintTop_toBottomOf="@id/resetPass"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-    <TextView
-        android:id="@+id/tvOr"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="oppure"
-        android:textColor="@color/text_muted"
-        android:textSize="13sp"
-        android:layout_marginTop="16dp"
-        app:layout_constraintTop_toBottomOf="@id/accessBt"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-    <Button
-        android:id="@+id/registerButton"
-        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-        android:layout_width="0dp"
-        android:layout_height="52dp"
-        android:text="Registrati"
-        android:textSize="16sp"
-        android:textStyle="bold"
-        android:textColor="@color/accent_teal"
-        android:backgroundTint="@color/card_surface"
-        android:layout_marginHorizontal="24dp"
-        android:layout_marginTop="12dp"
-        app:cornerRadius="14dp"
-        app:strokeColor="@color/accent_teal"
-        app:strokeWidth="1dp"
-        app:layout_constraintTop_toBottomOf="@id/tvOr"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-</androidx.constraintlayout.widget.ConstraintLayout>
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

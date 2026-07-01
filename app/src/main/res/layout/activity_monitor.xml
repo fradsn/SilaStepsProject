@@ -1,114 +1,368 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background_dark"
     android:fillViewport="true"
-    tools:context=".UI.CurrentActivityFragment">
+    android:background="@color/background_dark">
 
-    <androidx.constraintlayout.widget.ConstraintLayout
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingBottom="32dp">
+        android:orientation="vertical"
+        android:padding="20dp">
 
         <TextView
-            android:id="@+id/tvTitle"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Activity Monitor"
-            android:textColor="@color/white"
-            android:textSize="22sp"
+            android:text="Health Dashboard"
+            android:textColor="@color/text_primary"
+            android:textSize="26sp"
             android:textStyle="bold"
-            android:layout_marginStart="24dp"
-            android:layout_marginTop="32dp"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintStart_toStartOf="parent" />
+            android:layout_marginTop="12dp"/>
 
-        <androidx.cardview.widget.CardView
-            android:id="@+id/cardCurrentActivity"
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="24dp"
-            android:layout_marginTop="24dp"
-            app:cardCornerRadius="28dp"
-            app:cardBackgroundColor="@color/card_surface"
-            app:layout_constraintTop_toBottomOf="@id/tvTitle">
-            <androidx.constraintlayout.widget.ConstraintLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:padding="28dp">
-                <View android:id="@+id/pulseRing3" android:layout_width="160dp" android:layout_height="160dp" android:background="@drawable/bg_pulse_ring" android:alpha="0.08" app:layout_constraintTop_toTopOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" />
-                <View android:id="@+id/pulseRing2" android:layout_width="120dp" android:layout_height="120dp" android:background="@drawable/bg_pulse_ring" android:alpha="0.15" app:layout_constraintTop_toTopOf="@id/pulseRing3" app:layout_constraintBottom_toBottomOf="@id/pulseRing3" app:layout_constraintStart_toStartOf="@id/pulseRing3" app:layout_constraintEnd_toEndOf="@id/pulseRing3" />
-                <View android:id="@+id/pulseRing1" android:layout_width="84dp" android:layout_height="84dp" android:background="@drawable/bg_pulse_ring_filled" app:layout_constraintTop_toTopOf="@id/pulseRing2" app:layout_constraintBottom_toBottomOf="@id/pulseRing2" app:layout_constraintStart_toStartOf="@id/pulseRing2" app:layout_constraintEnd_toEndOf="@id/pulseRing2" />
-                <ImageView android:id="@+id/ivActivityIcon" android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/ic_activity_walking" app:layout_constraintTop_toTopOf="@id/pulseRing1" app:layout_constraintBottom_toBottomOf="@id/pulseRing1" app:layout_constraintStart_toStartOf="@id/pulseRing1" app:layout_constraintEnd_toEndOf="@id/pulseRing1" app:tint="@color/white" />
-                <TextView android:id="@+id/tvActivityLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Walking" android:textColor="@color/white" android:textSize="28sp" android:textStyle="bold" android:layout_marginTop="20dp" app:layout_constraintTop_toBottomOf="@id/pulseRing3" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" />
-                <ProgressBar android:id="@+id/progressConfidence" style="@style/Widget.AppCompat.ProgressBar.Horizontal" android:layout_width="match_parent" android:layout_height="6dp" android:max="100" android:progress="87" android:progressDrawable="@drawable/progress_confidence" app:layout_constraintTop_toBottomOf="@id/tvActivityLabel" android:layout_marginTop="24dp" />
-                <TextView android:id="@+id/tvConfidenceValue" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="87%" android:textColor="@color/accent_teal" android:textSize="12sp" app:layout_constraintBottom_toTopOf="@id/progressConfidence" app:layout_constraintEnd_toEndOf="parent" android:layout_marginBottom="4dp" />
-            </androidx.constraintlayout.widget.ConstraintLayout>
-        </androidx.cardview.widget.CardView>
+            android:text="Real-time biometric monitoring"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:layout_marginBottom="24dp"/>
 
-        <androidx.cardview.widget.CardView
-            android:id="@+id/cardHeartRate"
+        <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="24dp"
-            android:layout_marginTop="16dp"
-            app:cardCornerRadius="20dp"
-            app:cardBackgroundColor="@color/card_surface"
-            app:layout_constraintTop_toBottomOf="@id/cardCurrentActivity">
-            <androidx.constraintlayout.widget.ConstraintLayout
+            app:cardCornerRadius="24dp"
+            app:cardBackgroundColor="@color/surface_dark"
+            app:strokeWidth="1dp"
+            app:strokeColor="@color/surface_variant_dark"
+            android:layout_marginBottom="20dp"
+            app:cardElevation="2dp">
+
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:padding="20dp">
-                <TextView android:id="@+id/tvHeartRateTitle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Battito Cardiaco" android:textColor="@color/white" android:textStyle="bold" app:layout_constraintTop_toTopOf="parent" app:layout_constraintStart_toStartOf="parent" />
-                <TextView android:id="@+id/tvBpmValue" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="--" android:textColor="@color/white" android:textSize="42sp" android:textStyle="bold" android:layout_marginTop="12dp" app:layout_constraintTop_toBottomOf="@id/tvHeartRateTitle" app:layout_constraintStart_toStartOf="parent" />
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="16dp" app:layout_constraintTop_toBottomOf="@id/tvBpmValue">
-                    <Button android:id="@+id/btnToggleHR" android:layout_width="match_parent" android:layout_height="40dp" android:text="START BPM" android:backgroundTint="@color/accent_teal" android:textSize="10sp" />
+                android:orientation="vertical"
+                android:padding="24dp"
+                android:gravity="center_horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="DETECTED ACTIVITY (SHIMMER)"
+                    android:textColor="@color/health_shimmer"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.1"
+                    android:layout_marginBottom="24dp"/>
+
+                <FrameLayout
+                    android:layout_width="140dp"
+                    android:layout_height="140dp"
+                    android:layout_marginBottom="16dp">
+
+                    <View
+                        android:id="@+id/pulseRing3"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/bg_pulse_ring" />
+
+                    <View
+                        android:id="@+id/pulseRing2"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_margin="15dp"
+                        android:background="@drawable/bg_pulse_ring" />
+
+                    <View
+                        android:id="@+id/pulseRing1"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_margin="30dp"
+                        android:background="@drawable/bg_pulse_ring_filled" />
+
+                    <ImageView
+                        android:id="@+id/ivActivityIcon"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_activity_sitting"
+                        app:tint="@color/text_primary" />
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/tvActivityLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Sitting"
+                    android:textColor="@color/text_primary"
+                    android:textSize="24sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="4dp"/>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Confidence: "
+                        android:textColor="@color/text_secondary"
+                        android:textSize="13sp"/>
+
+                    <TextView
+                        android:id="@+id/tvConfidenceValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="100%"
+                        android:textColor="@color/health_shimmer"
+                        android:textSize="13sp"
+                        android:textStyle="bold"/>
                 </LinearLayout>
-            </androidx.constraintlayout.widget.ConstraintLayout>
-        </androidx.cardview.widget.CardView>
 
-        <androidx.cardview.widget.CardView
-            android:id="@+id/cardOxygen"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="24dp"
-            android:layout_marginTop="12dp"
-            android:layout_marginEnd="6dp"
-            app:cardCornerRadius="18dp"
-            app:cardBackgroundColor="@color/card_surface"
-            app:layout_constraintTop_toBottomOf="@id/cardHeartRate"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toStartOf="@+id/cardBP">
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Ossigeno" android:textColor="@color/white" android:textStyle="bold" android:textSize="14sp" />
-                <TextView android:id="@+id/tvSpO2Value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="-- %" android:textColor="@color/accent_teal" android:textSize="22sp" android:textStyle="bold" />
-                <Button android:id="@+id/btnStartSpO2" android:layout_width="match_parent" android:layout_height="40dp" android:text="AVVIA SPO₂" android:backgroundTint="@color/accent_teal" android:textSize="10sp" />
+                <ProgressBar
+                    android:id="@+id/progressConfidence"
+                    style="@android:style/Widget.Material.ProgressBar.Horizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="6dp"
+                    android:max="100"
+                    android:progress="100"
+                    android:progressTint="@color/health_shimmer"
+                    android:progressBackgroundTint="@color/surface_variant_dark" />
+
             </LinearLayout>
-        </androidx.cardview.widget.CardView>
+        </com.google.android.material.card.MaterialCardView>
 
-        <androidx.cardview.widget.CardView
-            android:id="@+id/cardBP"
-            android:layout_width="0dp"
+        <TextView
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:layout_marginEnd="24dp"
-            app:cardCornerRadius="18dp"
-            app:cardBackgroundColor="@color/card_surface"
-            app:layout_constraintTop_toTopOf="@id/cardOxygen"
-            app:layout_constraintStart_toEndOf="@id/cardOxygen"
-            app:layout_constraintEnd_toEndOf="parent">
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Pressione" android:textColor="@color/white" android:textStyle="bold" android:textSize="14sp" />
-                <TextView android:id="@+id/tvBpValue" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="-- / --" android:textColor="@color/accent_orange" android:textSize="22sp" android:textStyle="bold" />
+            android:text="BIOMETRIC METRICS (SMART RING)"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.1"
+            android:layout_marginBottom="12dp"
+            android:layout_marginStart="4dp"/>
 
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:weightSum="10">
-                    <Button android:id="@+id/btnStartBP" android:layout_width="match_parent" android:layout_height="40dp" android:layout_weight="6.5" android:text="AVVIA BP" android:backgroundTint="@color/accent_teal" android:textSize="9sp" android:paddingHorizontal="4dp" />
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="18dp"
+            app:cardBackgroundColor="@color/surface_dark"
+            app:strokeWidth="1dp"
+            app:strokeColor="@color/surface_variant_dark"
+            android:layout_marginBottom="12dp">
+
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="16dp">
+
+                <ImageView
+                    android:id="@+id/ivHeartIcon"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:src="@drawable/ic_favorite"
+                    app:tint="@color/health_bpm"
+                    android:layout_centerVertical="true"/>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_toEndOf="@id/ivHeartIcon"
+                    android:layout_marginStart="16dp"
+                    android:layout_centerVertical="true">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Heart Rate"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="13sp" />
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:id="@+id/tvBpmValue"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="--"
+                            android:textColor="@color/text_primary"
+                            android:textSize="26sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text=" bpm"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="14sp"
+                            android:layout_marginStart="4dp"/>
+                    </LinearLayout>
                 </LinearLayout>
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
 
-    </androidx.constraintlayout.widget.ConstraintLayout>
-</androidx.core.widget.NestedScrollView>
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnToggleHR"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true"
+                    android:text="START BPM"
+                    android:textSize="12sp"
+                    android:textColor="@color/health_bpm"
+                    app:backgroundTint="@color/primary_container"
+                    app:cornerRadius="12dp" />
+            </RelativeLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="18dp"
+            app:cardBackgroundColor="@color/surface_dark"
+            app:strokeWidth="1dp"
+            app:strokeColor="@color/surface_variant_dark"
+            android:layout_marginBottom="12dp">
+
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="16dp">
+
+                <ImageView
+                    android:id="@+id/ivO2Icon"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:src="@drawable/ic_cloud_ml"
+                    app:tint="@color/health_o2"
+                    android:layout_centerVertical="true"/>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_toEndOf="@id/ivO2Icon"
+                    android:layout_marginStart="16dp"
+                    android:layout_centerVertical="true">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Blood Oxygen"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:id="@+id/tvSpO2Value"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="-- %"
+                        android:textColor="@color/text_primary"
+                        android:textSize="26sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnStartSpO2"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true"
+                    android:text="MEASURE O₂"
+                    android:textSize="12sp"
+                    android:textColor="@color/health_o2"
+                    app:backgroundTint="@color/primary_container"
+                    app:cornerRadius="12dp" />
+            </RelativeLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="18dp"
+            app:cardBackgroundColor="@color/surface_dark"
+            app:strokeWidth="1dp"
+            app:strokeColor="@color/surface_variant_dark"
+            android:layout_marginBottom="32dp">
+
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="16dp">
+
+                <ImageView
+                    android:id="@+id/ivBpIcon"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:src="@drawable/chart_pipe_svgrepo_com"
+                    app:tint="@color/health_pressure"
+                    android:layout_centerVertical="true"/>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_toEndOf="@id/ivBpIcon"
+                    android:layout_marginStart="16dp"
+                    android:layout_centerVertical="true">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Blood Pressure"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="13sp" />
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:id="@+id/tvBpValue"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="-- / --"
+                            android:textColor="@color/text_primary"
+                            android:textSize="26sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text=" mmHg"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="14sp"
+                            android:layout_marginStart="4dp"/>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnStartBP"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true"
+                    android:text="MEASURE BP"
+                    android:textSize="12sp"
+                    android:textColor="@color/health_pressure"
+                    app:backgroundTint="@color/primary_container"
+                    app:cornerRadius="12dp" />
+            </RelativeLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+    </LinearLayout>
+</ScrollView>

@@ -7,65 +7,78 @@
     android:padding="20dp"
     android:background="@color/background_dark">
 
-    <!-- HEADER -->
     <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:layout_marginBottom="16dp">
+        android:layout_marginBottom="24dp">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Profilo"
-            android:textColor="@color/white"
-            android:textSize="30sp"
+            android:text="Profile"
+            android:textColor="@color/text_primary"
+            android:textSize="26sp"
             android:textStyle="bold"
             android:layout_alignParentStart="true"
             android:layout_centerVertical="true" />
 
         <ImageButton
             android:id="@+id/logout_button"
-            android:layout_width="45dp"
-            android:layout_height="45dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@drawable/baseline_logout_24"
-            android:adjustViewBounds="true"
             android:scaleType="fitCenter"
-            app:tint="@color/white" />
-
+            android:padding="8dp"
+            app:tint="@color/health_bpm" />
     </RelativeLayout>
 
-    <!-- ICONA PROFILO -->
-    <ImageView
+    <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/profile_image"
-        android:layout_width="130dp"
-        android:layout_height="130dp"
+        android:layout_width="110dp"
+        android:layout_height="110dp"
         android:layout_gravity="center"
         android:scaleType="centerCrop"
-        android:src="@drawable/user_svgrepo_com" />
+        android:src="@drawable/user_svgrepo_com"
+        app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Full"
+        app:strokeWidth="2dp"
+        app:strokeColor="@color/surface_variant_dark"
+        android:layout_marginBottom="12dp"/>
 
-    <!-- EMAIL -->
     <TextView
         android:id="@+id/profile_email"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center"
-        android:text="Benvenuto"
-        android:textColor="@color/white"
-        android:textSize="35sp"
+        android:text="Welcome"
+        android:textColor="@color/text_primary"
+        android:textSize="22sp"
         android:textStyle="bold"
-        android:layout_marginBottom="20dp" />
+        android:layout_marginBottom="32dp" />
 
-    <!-- MENU BUTTON 1 -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="ACCOUNT &amp; DEVICES"
+        android:textColor="@color/text_secondary"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.1"
+        android:layout_marginBottom="12dp"
+        android:layout_marginStart="4dp"/>
+
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/menuUserInfo"
         android:layout_width="match_parent"
-        android:layout_height="70dp"
+        android:layout_height="68dp"
         android:layout_marginBottom="12dp"
-        app:cardBackgroundColor="@color/card_surface"
+        app:cardBackgroundColor="@color/surface_dark"
         app:cardCornerRadius="16dp"
+        app:strokeWidth="1dp"
+        app:strokeColor="@color/surface_variant_dark"
         android:clickable="true"
         android:focusable="true"
         android:foreground="?attr/selectableItemBackground">
@@ -75,32 +88,34 @@
             android:layout_height="match_parent"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:paddingHorizontal="20dp">
+            android:paddingHorizontal="18dp">
 
             <ImageView
-                android:layout_width="50dp"
-                android:layout_height="50dp"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
                 android:src="@drawable/ic_account_box"
-                app:tint="@color/white" />
+                app:tint="@color/primary_neon" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="16dp"
-                android:text="Informazioni Utente"
-                android:textColor="@color/white"
-                android:textSize="20sp" />
+                android:text="User Information"
+                android:textColor="@color/text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold"/>
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
-    <!-- MENU BUTTON 2 -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/menuFindDevices"
         android:layout_width="match_parent"
-        android:layout_height="70dp"
+        android:layout_height="68dp"
         android:layout_marginBottom="12dp"
-        app:cardBackgroundColor="@color/card_surface"
+        app:cardBackgroundColor="@color/surface_dark"
         app:cardCornerRadius="16dp"
+        app:strokeWidth="1dp"
+        app:strokeColor="@color/surface_variant_dark"
         android:clickable="true"
         android:focusable="true"
         android:foreground="?attr/selectableItemBackground">
@@ -110,31 +125,33 @@
             android:layout_height="match_parent"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:paddingHorizontal="20dp">
+            android:paddingHorizontal="18dp">
 
             <ImageView
-                android:layout_width="50dp"
-                android:layout_height="50dp"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
                 android:src="@android:drawable/ic_search_category_default"
-                app:tint="@color/white" />
+                app:tint="@color/health_shimmer" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="16dp"
-                android:text="Trova Nuovi Dispositivi"
-                android:textColor="@color/white"
-                android:textSize="20sp" />
+                android:text="Pair New Devices"
+                android:textColor="@color/text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold"/>
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
-    <!-- MENU BUTTON 3 -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/menuConnectedDevices"
         android:layout_width="match_parent"
-        android:layout_height="70dp"
-        app:cardBackgroundColor="@color/card_surface"
+        android:layout_height="68dp"
+        app:cardBackgroundColor="@color/surface_dark"
         app:cardCornerRadius="16dp"
+        app:strokeWidth="1dp"
+        app:strokeColor="@color/surface_variant_dark"
         android:clickable="true"
         android:focusable="true"
         android:foreground="?attr/selectableItemBackground">
@@ -144,21 +161,22 @@
             android:layout_height="match_parent"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:paddingHorizontal="20dp">
+            android:paddingHorizontal="18dp">
 
             <ImageView
-                android:layout_width="50dp"
-                android:layout_height="50dp"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
                 android:src="@drawable/baseline_checklist_24"
-                app:tint="@color/white" />
+                app:tint="@color/health_o2" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="16dp"
-                android:text="Dispositivi Connessi"
-                android:textColor="@color/white"
-                android:textSize="20sp" />
+                android:text="Connected Hardware"
+                android:textColor="@color/text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold"/>
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 

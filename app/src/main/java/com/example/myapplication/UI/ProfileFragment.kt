@@ -46,16 +46,14 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
     private val auth = FirebaseAuth.getInstance()
     private var deviceAdapter: DeviceAdapter? = null
 
-    // TIMER CICLICO (UI Polling) per rinfrescare lo stato della batteria nel Bottom Sheet
     private val pollHandler = Handler(Looper.getMainLooper())
     private val pollRunnable = object : Runnable {
         override fun run() {
             rinfrescaDatiInRealtime()
-            pollHandler.postDelayed(this, 2000) // Interroga le SharedPreferences ogni 2 secondi
+            pollHandler.postDelayed(this, 2000)
         }
     }
 
-    // Launcher asincrono per la richiesta dei permessi nativi
     @RequiresApi(Build.VERSION_CODES.S)
     private val requestBlePermissionsLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -67,26 +65,19 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
         if (scanGranted && connectGranted && locationGranted) {
             showDevicePickerSheet()
         } else {
-            Toast.makeText(context, "È necessario concedere i permessi per cercare i dispositivi", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Bluetooth and location permissions are required to scan for devices", Toast.LENGTH_LONG).show()
         }
     }
 
-    // =====================================================================================
-    // GESTIONE SMART RING LISTENER CALLBACKS (Formale: l'ascolto primario è delegato al Service)
-    // =====================================================================================
     override fun onConnected() {}
     override fun onDisconnected() {}
     override fun onDataReceived(result: Decoder.DecodedResult) {}
     override fun onError(msg: String) {
-        activity?.runOnUiThread { Log.e("SMART_RING", "Errore: $msg") }
+        activity?.runOnUiThread { Log.e("SMART_RING", "Hardware Error: $msg") }
     }
 
-    // =====================================================================================
-    // GESTIONE MACHINE LEARNING / MOTION OBSERVER CALLBACKS
-    // =====================================================================================
     override fun onMotionStateChanged(state: MotionUiState) {
         if (!isAdded) return
-
         val error = state.lastError
         if (!error.isNullOrBlank()) {
             activity?.runOnUiThread {
@@ -97,24 +88,21 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         val sheetView = inflater.inflate(R.layout.fragment_profile, container, false)
-
         aggiornaUI(sheetView)
-
         return sheetView
     }
 
     private fun aggiornaUI(sheetView: View) {
         val userId = auth.currentUser?.uid ?: "user"
-
         val sharedPref = sheetView.context.getSharedPreferences("UserData_$userId", Context.MODE_PRIVATE)
-        val savedName = sharedPref.getString("name", "")
+        val savedName = sharedPref.getString("name", "Welcome")
         val savedImageUri = sharedPref.getString("profile_image_uri", null)
 
-        sheetView.findViewById<TextView>(R.id.profile_email).text = "$savedName"
+        sheetView.findViewById<TextView>(R.id.profile_email).text = savedName
         val profileImage = sheetView.findViewById<ImageView>(R.id.profile_image)
         if (savedImageUri.isNullOrEmpty()) {
             profileImage.setImageResource(R.drawable.user_svgrepo_com)
-            profileImage.setColorFilter(Color.WHITE)
+            profileImage.setColorFilter(resources.getColor(R.color.text_secondary))
         } else {
             profileImage.clearColorFilter()
             profileImage.setImageURI(savedImageUri.toUri())
@@ -129,13 +117,11 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
             aggiornaUI(view)
         }
 
-        // Inizializzazione del core di Machine Learning dell'applicazione
         MotionSessionManager.initialize(requireContext())
         MotionSessionManager.addObserver(this)
 
         view.findViewById<MaterialCardView>(R.id.menuUserInfo)?.setOnClickListener { showUserInfoBottomSheet() }
 
-        // Controllo dinamico a Runtime dei permessi pericolosi prima di avviare la ricerca
         view.findViewById<MaterialCardView>(R.id.menuFindDevices)?.setOnClickListener {
             val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 arrayOf(
@@ -151,10 +137,7 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
             }
 
             val allPermissionsGranted = requiredPermissions.all { permission ->
-                ContextCompat.checkSelfPermission(
-                    requireContext(),
-                    permission
-                ) == PackageManager.PERMISSION_GRANTED
+                ContextCompat.checkSelfPermission(requireContext(), permission) == PackageManager.PERMISSION_GRANTED
             }
 
             if (allPermissionsGranted) {
@@ -169,21 +152,17 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
             val shimmerConnected = MotionSessionManager.isShimmerConnected()
 
             if (ringConnected || shimmerConnected) {
-                // Chiediamo all'hardware di aggiornare la batteria: la risposta verrà catturata dal Service e scritta nelle Prefs
                 SmartRingManager.getActiveInstance()?.requestBatteryLevel()
                 showConnectedDeviceBottomSheet()
             } else {
-                Toast.makeText(context, "Nessun dispositivo connesso", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "No hardware devices currently paired", Toast.LENGTH_SHORT).show()
             }
         }
 
         view.findViewById<ImageButton>(R.id.logout_button)?.setOnClickListener {
             auth.signOut()
-
-            // Interrompiamo definitivamente il servizio di monitoraggio in background al logout
             context?.stopService(Intent(context, HealthMonitoringService::class.java))
 
-            // Smantellamento dei Singleton hardware e rimozione dei listener ML
             SmartRingManager.getActiveInstance()?.disconnect()
             MotionSessionManager.disconnectShimmer()
             MotionSessionManager.removeObserver(this)
@@ -210,39 +189,55 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
 
         val activeRing = SmartRingManager.getActiveInstance()
 
-        // Logica Anello Unificato
+        // Logica Smart Ring con protezioni anti-crash
         if (activeRing?.isConnected() == true) {
-            cardRing.visibility = View.VISIBLE
-            tvRingName.text = "Smart Ring"
-            tvRingAddress.text = activeRing.getAddress()
+            cardRing?.visibility = View.VISIBLE
+            tvRingName?.text = "Smart Ring"
+            tvRingAddress?.text = activeRing.getAddress()
 
-            // Prima lettura immediata del valore memorizzato nelle preferenze prima che parta il ciclo del timer
             val sharedPref = requireContext().getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
-            tvBatteryLevelInSheet?.text = sharedPref.getString("last_battery_level", "Batteria: --")
+            tvBatteryLevelInSheet?.text = sharedPref.getString("last_battery_level", "Battery: --")
 
-            btnDisconnectRing.setOnClickListener {
-                activeRing.disconnect()
-                // Se scolleghiamo l'anello, interrompiamo anche il Service
-                context?.stopService(Intent(context, HealthMonitoringService::class.java))
-                cardRing.visibility = View.GONE
-                if (cardShimmer.isGone) dialog.dismiss()
+            btnDisconnectRing?.setOnClickListener {
+                try {
+                    activeRing.disconnect()
+                    context?.stopService(Intent(context, HealthMonitoringService::class.java))
+                    cardRing?.visibility = View.GONE
+
+                    // Chiudiamo il dialog in modo pulito se non ci sono altri sensori attivi
+                    if (cardShimmer == null || cardShimmer.isGone || cardShimmer.visibility == View.GONE) {
+                        dialog.dismiss()
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    dialog.dismiss()
+                }
             }
         } else {
-            cardRing.visibility = View.GONE
+            cardRing?.visibility = View.GONE
         }
 
-        // Logica Shimmer delegata a MotionSessionManager (Machine Learning branch)
+        // Logica Shimmer con protezioni anti-crash
         if (MotionSessionManager.isShimmerConnected()) {
-            cardShimmer.visibility = View.VISIBLE
-            tvShimmerName.text = "Shimmer3"
-            tvShimmerAddress.text = MotionSessionManager.getShimmerAddress() ?: "Connesso"
-            btnDisconnectShimmer.setOnClickListener {
-                MotionSessionManager.disconnectShimmer()
-                cardShimmer.visibility = View.GONE
-                if (cardRing.isGone) dialog.dismiss()
+            cardShimmer?.visibility = View.VISIBLE
+            tvShimmerName?.text = "Shimmer3 Node"
+            tvShimmerAddress?.text = MotionSessionManager.getShimmerAddress() ?: "Connected"
+
+            btnDisconnectShimmer?.setOnClickListener {
+                try {
+                    MotionSessionManager.disconnectShimmer()
+                    cardShimmer?.visibility = View.GONE
+
+                    if (cardRing == null || cardRing.isGone || cardRing.visibility == View.GONE) {
+                        dialog.dismiss()
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    dialog.dismiss()
+                }
             }
         } else {
-            cardShimmer.visibility = View.GONE
+            cardShimmer?.visibility = View.GONE
         }
 
         dialog.setContentView(sheetView)
@@ -250,9 +245,6 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
         dialog.setOnDismissListener { tvBatteryLevelInSheet = null }
     }
 
-    // =====================================================================================
-    // COORDINA IL PICKER SHEET TRAMITE BLE_SCANNER_MANAGER
-    // =====================================================================================
     @SuppressLint("MissingPermission")
     private fun showDevicePickerSheet() {
         val dialog = BottomSheetDialog(requireContext())
@@ -266,12 +258,9 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
             BleScannerManager.stopScan()
 
             if (isShimmer) {
-                // Nel branch ML passiamo l'indirizzo direttamente a MotionSessionManager
                 MotionSessionManager.connectToShimmer(requireContext(), device.address)
-                Toast.makeText(requireContext(), "Connessione a Shimmer in corso...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), "Connecting to Shimmer node...", Toast.LENGTH_SHORT).show()
             } else {
-                // FIX CRITICO: Invece di istanziare e connettere l'anello dal Fragment rubando il Listener,
-                // passiamo il testimone al Service tramite Intent. Sarà il Service ad attivare l'anello e a fare da ascoltatore fisso.
                 val serviceIntent = Intent(context, HealthMonitoringService::class.java).apply {
                     putExtra("MAC_ADDRESS", device.address)
                 }
@@ -281,7 +270,7 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
                 } else {
                     context?.startService(serviceIntent)
                 }
-                Toast.makeText(requireContext(), "Inizializzazione connessione tramite Service...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), "Initializing hardware connection via Service...", Toast.LENGTH_SHORT).show()
             }
             dialog.dismiss()
         }
@@ -291,12 +280,12 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
 
         BleScannerManager.init(deviceAdapter!!, object : BleScannerManager.ScanStateListener {
             override fun onScanStarted() {
-                btnScan.text = "FERMA RICERCA"
+                btnScan.text = "STOP SEARCH"
                 scanProgress.visibility = View.VISIBLE
             }
 
             override fun onScanStopped() {
-                btnScan.text = "AVVIA RICERCA"
+                btnScan.text = "START SEARCH"
                 scanProgress.visibility = View.GONE
             }
         })
@@ -313,10 +302,7 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
 
         dialog.setContentView(sheetView)
         dialog.show()
-
-        dialog.setOnDismissListener {
-            BleScannerManager.stopScan()
-        }
+        dialog.setOnDismissListener { BleScannerManager.stopScan() }
     }
 
     private fun showUserInfoBottomSheet() {
@@ -324,15 +310,11 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
         sheet.show(parentFragmentManager, "UserInfoBottomSheet")
     }
 
-    /**
-     * Metodo di Polling attivato ciclicamente dall'Handler
-     */
     private fun rinfrescaDatiInRealtime() {
         if (!isAdded) return
-        // Se l'utente ha aperto il Bottom Sheet della connessione e la TextView della batteria esiste...
         if (tvBatteryLevelInSheet != null) {
             val sharedPref = requireContext().getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
-            val livelloBatteria = sharedPref.getString("last_battery_level", "Batteria: --")
+            val livelloBatteria = sharedPref.getString("last_battery_level", "Battery: --")
 
             activity?.runOnUiThread {
                 tvBatteryLevelInSheet?.text = livelloBatteria
@@ -342,21 +324,12 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
 
     override fun onResume() {
         super.onResume()
-
-        // Avviamo il timer di polling grafico ogni 2 secondi
         pollHandler.post(pollRunnable)
-
-        // FIX LOGICA: Rimosso completamente ringManager?.updateListener(this).
-        // Lasciamo che il Service continui a fare da ascoltatore fisso hardware in totale autonomia.
     }
 
     override fun onPause() {
         super.onPause()
-
-        // Interrompiamo il timer di polling grafico all'uscita dal fragment
         pollHandler.removeCallbacks(pollRunnable)
-
-        // FIX LOGICA: Rimosso lo scollegamento (updateListener(object...)) che andava ad accecare il Service.
     }
 
     override fun onDestroyView() {

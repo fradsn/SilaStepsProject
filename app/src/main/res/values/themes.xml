@@ -1,17 +1,26 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme configurato in Material 3 -->
+    <style name="Theme.MyApplication" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Colori di Base -->
+        <item name="colorPrimary">@color/primary_neon</item>
+        <item name="colorOnPrimary">@color/text_primary</item>
+        <item name="colorPrimaryContainer">@color/primary_container</item>
 
-    <style name="Theme.MyApplication" parent="Theme.MaterialComponents.Light.NoActionBar">
-        <item name="colorPrimary">@color/accent_teal</item>
-        <item name="colorPrimaryVariant">@color/card_surface</item>
-        <item name="colorOnPrimary">@color/white</item>
+        <!-- Sfondi e Superfici -->
         <item name="android:windowBackground">@color/background_dark</item>
-        <item name="materialThemeOverlay">@style/ThemeOverlay.MaterialComponents</item>
-    </style>
+        <item name="colorSurface">@color/surface_dark</item>
+        <item name="colorSurfaceVariant">@color/surface_variant_dark</item>
 
-    <style name="BottomNavigationTheme" parent="Theme.MaterialComponents.Light">
-        <item name="colorPrimary">@color/accent_teal</item>
-        <item name="android:textColorSecondary">@color/white</item>
-    </style>
+        <!-- Testi -->
+        <item name="colorOnBackground">@color/text_primary</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+        <item name="colorOnSurfaceVariant">@color/text_secondary</item>
 
+        <!-- Personalizzazione Barra di Stato Superiore -->
+        <item name="android:statusBarColor">@color/background_dark</item>
+        <item name="android:windowLightStatusBar">false</item>
+
+        <!-- Forzatura angoli arrotondati stile moderno per le Card -->
+        <item name="cardViewStyle">@style/Widget.Material3.CardView.Filled</item>
+    </style>
 </resources>

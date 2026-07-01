@@ -1,17 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
-    android:background="@android:color/holo_blue_dark"
-    android:orientation="vertical"
-    android:padding="8dp">
+    app:cardBackgroundColor="#CC212836"
+    app:cardCornerRadius="8dp"
+    app:strokeWidth="1dp"
+    app:strokeColor="@color/surface_variant_dark"
+    app:cardElevation="4dp"
+    android:padding="6dp">
 
     <TextView
         android:id="@+id/tvMarkerValue"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="--"
-        android:textColor="@android:color/white"
+        android:textColor="@color/text_primary"
         android:textStyle="bold"
-        android:textSize="12sp"/>
-</LinearLayout>
+        android:textSize="12sp"
+        android:layout_gravity="center"
+        android:paddingHorizontal="8dp"
+        android:paddingVertical="4dp"/>
+</com.google.android.material.card.MaterialCardView>

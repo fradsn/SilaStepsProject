@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@color/card_surface">
+    android:background="@color/surface_dark">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -13,8 +14,8 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Parametri Biometrici"
-            android:textColor="@color/white"
+            android:text="Biometric Parameters"
+            android:textColor="@color/text_primary"
             android:textSize="20sp"
             android:textStyle="bold"
             android:layout_marginBottom="16dp" />
@@ -22,41 +23,44 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Sesso:"
-            android:textColor="#BBBBBB"
+            android:text="Gender:"
+            android:textColor="@color/text_secondary"
             android:textSize="14sp" />
+
         <Spinner
             android:id="@+id/spinnerGender"
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:layout_marginBottom="16dp"
-            android:backgroundTint="@color/white" />
+            android:backgroundTint="@color/text_primary" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Nome:"
-            android:textColor="#BBBBBB" />
+            android:text="First Name:"
+            android:textColor="@color/text_secondary" />
+
         <EditText
             android:id="@+id/editName"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textColor="@color/white"
-            android:backgroundTint="@color/white"
+            android:textColor="@color/text_primary"
+            android:backgroundTint="@color/surface_variant_dark"
             android:layout_marginBottom="12dp"
             android:inputType="textPersonName" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Cognome:"
-            android:textColor="#BBBBBB" />
+            android:text="Last Name:"
+            android:textColor="@color/text_secondary" />
+
         <EditText
             android:id="@+id/editSurname"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textColor="@color/white"
-            android:backgroundTint="@color/white"
+            android:textColor="@color/text_primary"
+            android:backgroundTint="@color/surface_variant_dark"
             android:layout_marginBottom="12dp"
             android:inputType="textPersonName" />
 
@@ -70,14 +74,14 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:orientation="vertical">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Altezza (cm):" android:textColor="#BBBBBB" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Height (cm):" android:textColor="@color/text_secondary" />
                 <EditText
                     android:id="@+id/editHeight"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:inputType="number"
-                    android:textColor="@color/white"
-                    android:backgroundTint="@color/white" />
+                    android:textColor="@color/text_primary"
+                    android:backgroundTint="@color/surface_variant_dark" />
             </LinearLayout>
 
             <LinearLayout
@@ -86,37 +90,38 @@
                 android:layout_weight="1"
                 android:orientation="vertical"
                 android:layout_marginStart="8dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Peso (kg):" android:textColor="#BBBBBB" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Weight (kg):" android:textColor="@color/text_secondary" />
                 <EditText
                     android:id="@+id/editWeight"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:inputType="number"
-                    android:textColor="@color/white"
-                    android:backgroundTint="@color/white" />
+                    android:textColor="@color/text_primary"
+                    android:backgroundTint="@color/surface_variant_dark" />
             </LinearLayout>
         </LinearLayout>
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Età:"
-            android:textColor="#BBBBBB"
+            android:text="Age:"
+            android:textColor="@color/text_secondary"
             android:layout_marginTop="12dp"/>
+
         <EditText
             android:id="@+id/editAge"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:inputType="number"
-            android:textColor="@color/white"
-            android:backgroundTint="@color/white"
+            android:textColor="@color/text_primary"
+            android:backgroundTint="@color/surface_variant_dark"
             android:layout_marginBottom="30dp" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Immagine profilo"
-            android:textColor="@color/white"
+            android:text="Profile Picture"
+            android:textColor="@color/text_primary"
             android:textSize="20sp"
             android:textStyle="bold"
             android:layout_marginBottom="16dp" />
@@ -127,40 +132,44 @@
             android:layout_height="100dp"
             android:layout_gravity="center"
             android:scaleType="centerCrop"
-            android:src="@drawable/user_svgrepo_com" />
-
+            android:src="@drawable/user_svgrepo_com"
+            android:layout_marginBottom="16dp"/>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:layout_marginBottom="20dp">
+            android:layout_marginBottom="24dp">
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnPickImage"
+                style="@style/Widget.Material3.Button.TonalButton"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Carica" />
+                android:text="Upload" />
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnDeleteImage"
+                style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="0dp"
-                android:layout_height="match_parent"
+                android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Elimina"
+                android:text="Remove"
                 android:layout_marginStart="12dp"
-                android:textColor="@color/accent_orange"/>
+                android:textColor="@color/health_bpm"/>
         </LinearLayout>
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnSaveInfo"
+            style="@style/Widget.Material3.Button"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Salva Informazioni"
-            android:backgroundTint="@android:color/holo_green_dark"
-            android:textColor="@color/white" />
+            android:layout_height="54dp"
+            android:text="Save Profile Data"
+            app:backgroundTint="@color/health_shimmer"
+            android:textColor="@color/text_primary"
+            app:cornerRadius="16dp" />
 
     </LinearLayout>
 </ScrollView>

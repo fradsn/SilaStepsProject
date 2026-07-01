@@ -1,5 +1,4 @@
 package com.example.myapplication.UI
-
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
@@ -19,7 +18,6 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import com.example.myapplication.BT.ring.Decoder
 import com.example.myapplication.BT.ring.SmartRingManager
@@ -58,12 +56,10 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
 
     private var ringManager: SmartRingManager? = null
 
-    // LOGICA DI RICHIESTA CICLICA (UI Polling Timer)
     private val pollHandler = Handler(Looper.getMainLooper())
     private val pollRunnable = object : Runnable {
         override fun run() {
             aggiornaUiDaDatabase()
-            // Ripete l'interrogazione ogni 2000 millisecondi (2 secondi)
             pollHandler.postDelayed(this, 2000)
         }
     }
@@ -140,7 +136,7 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                     btnToggleHR.text = "STOP BPM"
                 }
             } else {
-                Toast.makeText(context, "Connetti l'anello dal profilo prima di misurare", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Connect the smart ring from profile tab before measuring", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -156,10 +152,10 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
 
                     ringManager?.startSpO2Measurement()
                 } else {
-                    Toast.makeText(context, "Misurazione già in corso. Ferma l'attività attuale.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Measurement already in progress. Stop current activity first.", Toast.LENGTH_SHORT).show()
                 }
             } else {
-                Toast.makeText(context, "Anello non connesso", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Smart ring not connected", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -175,10 +171,10 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
 
                     ringManager?.startBloodPressureMeasurement()
                 } else {
-                    Toast.makeText(context, "Misurazione già in corso. Ferma l'attività attuale.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Measurement already in progress. Stop current activity first.", Toast.LENGTH_SHORT).show()
                 }
             } else {
-                Toast.makeText(context, "Anello non connesso", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Smart ring not connected", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -187,7 +183,7 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                 showCalibrationDialog()
                 true
             } else {
-                Toast.makeText(context, "Anello non connesso", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Smart ring not connected", Toast.LENGTH_SHORT).show()
                 false
             }
         }
@@ -195,30 +191,41 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
 
     private fun showCalibrationDialog() {
         val context = context ?: return
-        val builder = AlertDialog.Builder(context)
-        builder.setTitle("Calibrazione Pressione")
-        builder.setMessage("Rimani fermo. Avvia la misurazione sull'anello e inserisci qui sotto i dati appena letti dallo sfigmomanometro a braccio:")
 
+        // Creiamo il Dialog nativo Material 3 usando il percorso esplicito
+        val builder = com.google.android.material.dialog.MaterialAlertDialogBuilder(context)
+        builder.setTitle("Blood Pressure Calibration")
+        builder.setMessage("Stay still. Start the measurement on the smart ring and enter the values just read from your upper arm blood pressure monitor below:")
+
+        // Contenitore principale verticale
         val linearLayout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(60, 24, 60, 24)
         }
 
+        // Primo box di input tradizionale per la pressione Sistolica
         val etSystolic = EditText(context).apply {
-            hint = "Pressione Sistolica [60-250]"
+            hint = "Systolic Pressure [60-250]"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setTextColor(resources.getColor(R.color.text_primary))
+            setHintTextColor(resources.getColor(R.color.text_secondary))
         }
 
+        // Secondo box di input tradizionale per la pressione Diastolica
         val etDiastolic = EditText(context).apply {
-            hint = "Pressione Diastolica [40-150]"
+            hint = "Diastolic Pressure [40-150]"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setTextColor(resources.getColor(R.color.text_primary))
+            setHintTextColor(resources.getColor(R.color.text_secondary))
+            setPadding(paddingLeft, 32, paddingRight, paddingBottom) // Spazio sopra l'input
         }
 
+        // Aggiungiamo i box direttamente al layout senza passare da TextInputLayout
         linearLayout.addView(etSystolic)
         linearLayout.addView(etDiastolic)
         builder.setView(linearLayout)
 
-        builder.setPositiveButton("Calibra") { dialog, _ ->
+        builder.setPositiveButton("Calibrate") { dialog, _ ->
             val sysStr = etSystolic.text.toString()
             val diaStr = etDiastolic.text.toString()
 
@@ -227,12 +234,12 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                 val diastolic = diaStr.toIntOrNull() ?: 0
                 ringManager?.sendBloodPressureCalibration(systolic, diastolic)
             } else {
-                Toast.makeText(context, "Inserisci entrambi i parametri per continuare", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Please fill in both fields to proceed", Toast.LENGTH_SHORT).show()
             }
             dialog.dismiss()
         }
 
-        builder.setNegativeButton("Annulla") { dialog, _ -> dialog.dismiss() }
+        builder.setNegativeButton("Cancel") { dialog, _ -> dialog.dismiss() }
         builder.show()
     }
 
@@ -245,13 +252,25 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
         tvActivityLabel.text = state.currentActivity
         tvConfidenceValue.text = "${state.confidencePercent}%"
         progressConfidence.progress = state.confidencePercent
+
+        val colorAccent = when (state.currentActivity.lowercase()) {
+            "walking" -> resources.getColor(R.color.primary_neon)
+            "jogging", "running" -> resources.getColor(R.color.health_bpm)
+            "sitting" -> resources.getColor(R.color.health_shimmer)
+            "standing" -> resources.getColor(R.color.health_pressure)
+            else -> resources.getColor(R.color.health_shimmer)
+        }
+
+        tvConfidenceValue.setTextColor(colorAccent)
+        progressConfidence.progressTintList = android.content.res.ColorStateList.valueOf(colorAccent)
+
         setActivityIcon(state.currentActivity)
     }
 
     private fun setActivityIcon(activity: String) {
         val drawableRes = when (activity.lowercase()) {
             "walking" -> getDrawableIdByName("ic_activity_walking")
-            "jogging", "running" -> getDrawableIdByName("ic_activity_jogging")
+            "jogging", "running" -> getDrawableIdByName("ic_activity_running")
             "sitting" -> getDrawableIdByName("ic_activity_sitting")
             "standing" -> getDrawableIdByName("ic_activity_standing")
             else -> getDrawableIdByName("ic_activity_walking")
@@ -275,16 +294,14 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
         }
     }
 
-    // QUESTO METODO NON RICEVE PIÙ I PACCHETTI DIRETTI (Se ne occupa stabilmente il Service)
     override fun onDataReceived(result: Decoder.DecodedResult) {
-        // Mostriamo i Toast per le calibrazioni, ma i dati vitali li leggiamo via timer dal DB
         if (result.type == "CALIBRATION_RESULT") {
             activity?.runOnUiThread {
                 if (!isAdded) return@runOnUiThread
                 when (result.calibrationStatus) {
-                    0 -> Toast.makeText(context, "Calibrazione completata!", Toast.LENGTH_LONG).show()
-                    1 -> Toast.makeText(context, "Errore parametri fuori scala", Toast.LENGTH_SHORT).show()
-                    2 -> Toast.makeText(context, "Calibrazione rifiutata", Toast.LENGTH_LONG).show()
+                    0 -> Toast.makeText(context, "Calibration completed successfully!", Toast.LENGTH_LONG).show()
+                    1 -> Toast.makeText(context, "Error: Out-of-range parameters", Toast.LENGTH_SHORT).show()
+                    2 -> Toast.makeText(context, "Calibration rejected", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -296,13 +313,9 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
         }
     }
 
-    /**
-     * Metodo di Polling ciclico attivato dall'Handler
-     */
     private fun aggiornaUiDaDatabase() {
         if (!isAdded) return
         try {
-            // Estrae l'ultimo record per ciascuna tabella
             val listaBpm = gestoreStatistiche.getBpm()
             if (listaBpm.isNotEmpty()) {
                 lastBpm = listaBpm.last().bpm.toString()
@@ -330,20 +343,12 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
         super.onResume()
         MotionSessionManager.addObserver(this)
         renderMotionState(MotionSessionManager.getState())
-
-        // 1. Legge subito lo stato attuale del DB all'apertura
         aggiornaUiDaDatabase()
-
-        // 2. AVVIA LA RICHIESTA CICLICA DI POLLING
         pollHandler.post(pollRunnable)
 
         val activeInstance = SmartRingManager.Companion.getActiveInstance()
         if (activeInstance != null) {
             ringManager = activeInstance
-
-            // IMPORTANTE: NON cambiamo il listener del manager hardware!
-            // Lasciamo che lo SmartRingManager continui a inviare i dati al Service.
-            // Aggiorniamo solo il testo del bottone per coerenza grafica
             btnToggleHR.text = if (ringManager?.getActiveMeasurementType() == "BPM") "STOP BPM" else "START BPM"
 
             if (ringManager?.isConnected() == false) {
@@ -356,8 +361,6 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
     override fun onPause() {
         super.onPause()
         MotionSessionManager.removeObserver(this)
-
-        // IMPORTANTE: INTERROMPIAMO IL TIMER CICLICO quando l'utente esce dalla tab
         pollHandler.removeCallbacks(pollRunnable)
     }
 

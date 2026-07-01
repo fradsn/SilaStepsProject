@@ -22,8 +22,8 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Cerca Dispositivi"
-            android:textColor="@color/white"
+            android:text="Scan for Devices"
+            android:textColor="@color/text_primary"
             android:textSize="20sp"
             android:textStyle="bold"
             android:layout_alignParentStart="true"
@@ -36,7 +36,7 @@
             android:layout_height="24dp"
             android:layout_alignParentEnd="true"
             android:layout_centerVertical="true"
-            android:indeterminateTint="@color/white"
+            android:indeterminateTint="@color/text_primary"
             android:visibility="gone" />
     </RelativeLayout>
 
@@ -46,13 +46,14 @@
         android:layout_height="300dp"
         android:layout_marginBottom="16dp"/>
 
-    <Button
+    <com.google.android.material.button.MaterialButton
         android:id="@+id/btnScan"
+        style="@style/Widget.Material3.Button"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="AVVIA RICERCA"
-        android:backgroundTint="@color/card_surface"
-        android:textColor="@color/white"
-        app:cornerRadius="12dp" />
+        android:layout_height="52dp"
+        android:text="START SCAN"
+        app:backgroundTint="@color/surface_variant_dark"
+        android:textColor="@color/text_primary"
+        app:cornerRadius="16dp" />
 
 </LinearLayout>

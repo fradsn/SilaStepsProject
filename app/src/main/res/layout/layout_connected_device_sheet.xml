@@ -17,8 +17,8 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Dispositivi Connessi"
-        android:textColor="@color/white"
+        android:text="Connected Hardware"
+        android:textColor="@color/text_primary"
         android:textSize="20sp"
         android:textStyle="bold"
         android:layout_marginBottom="16dp"/>
@@ -28,9 +28,10 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:visibility="gone"
-        app:cardBackgroundColor="@color/card_surface"
+        app:cardBackgroundColor="@color/surface_dark"
         app:cardCornerRadius="16dp"
-        app:cardElevation="0dp"
+        app:strokeWidth="1dp"
+        app:strokeColor="@color/surface_variant_dark"
         android:layout_marginBottom="12dp">
 
         <LinearLayout
@@ -51,7 +52,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Smart Ring"
-                    android:textColor="@color/white"
+                    android:textColor="@color/text_primary"
                     android:textSize="16sp"
                     android:textStyle="bold"/>
 
@@ -59,7 +60,7 @@
                     android:id="@+id/tvRingAddress"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textColor="#B3FFFFFF"
+                    android:textColor="@color/text_secondary"
                     android:textSize="14sp"
                     android:layout_marginTop="2dp"/>
 
@@ -67,20 +68,20 @@
                     android:id="@+id/tvBatteryLevel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Batteria: --%"
-                    android:textColor="#4CAF50"
+                    android:text="Battery: --%"
+                    android:textColor="@color/health_shimmer"
                     android:textSize="14sp"
                     android:textStyle="bold"
                     android:layout_marginTop="8dp" />
             </LinearLayout>
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnDisconnectRing"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
+                style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="SCOLLEGA"
-                android:textColor="#FF5252"
+                android:text="DISCONNECT"
+                android:textColor="@color/health_bpm"
                 android:textStyle="bold" />
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
@@ -90,9 +91,10 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:visibility="gone"
-        app:cardBackgroundColor="@color/card_surface"
+        app:cardBackgroundColor="@color/surface_dark"
         app:cardCornerRadius="16dp"
-        app:cardElevation="0dp">
+        app:strokeWidth="1dp"
+        app:strokeColor="@color/surface_variant_dark">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -112,7 +114,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Shimmer3"
-                    android:textColor="@color/white"
+                    android:textColor="@color/text_primary"
                     android:textSize="16sp"
                     android:textStyle="bold"/>
 
@@ -120,18 +122,18 @@
                     android:id="@+id/tvShimmerAddress"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textColor="#B3FFFFFF"
+                    android:textColor="@color/text_secondary"
                     android:textSize="14sp"
                     android:layout_marginTop="2dp"/>
             </LinearLayout>
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnDisconnectShimmer"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
+                style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="SCOLLEGA"
-                android:textColor="#FF5252"
+                android:text="DISCONNECT"
+                android:textColor="@color/health_bpm"
                 android:textStyle="bold" />
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
