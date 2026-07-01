@@ -1,4 +1,5 @@
 package com.example.myapplication.UI
+
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
@@ -11,6 +12,8 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AccelerateDecelerateInterpolator
+import android.view.animation.AlphaAnimation
+import android.view.animation.Animation
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
@@ -45,6 +48,10 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
     private lateinit var btnStartSpO2: Button
     private lateinit var btnStartBP: Button
 
+    private lateinit var ivHeartIcon: ImageView
+    private lateinit var ivO2Icon: ImageView
+    private lateinit var ivBpIcon: ImageView
+
     private lateinit var tvActivityLabel: TextView
     private lateinit var tvConfidenceValue: TextView
     private lateinit var progressConfidence: ProgressBar
@@ -56,10 +63,61 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
 
     private var ringManager: SmartRingManager? = null
 
+    // Riferimenti alle animazioni di pulsazione
+    private var bpmAnimation: Animation? = null
+    private var o2Animation: Animation? = null
+    private var bpAnimation: Animation? = null
+
     private val pollHandler = Handler(Looper.getMainLooper())
     private val pollRunnable = object : Runnable {
         override fun run() {
             aggiornaUiDaDatabase()
+
+            // IL CONTROLLO CONTINUO: Verifica lo stato dell'anello in tempo reale ad ogni ciclo (ogni 2 secondi)
+            val activeType = ringManager?.getActiveMeasurementType()
+            activity?.runOnUiThread {
+                if (!isAdded || view == null) return@runOnUiThread
+
+                // Gestione Cuore (BPM)
+                if (activeType == "BPM") {
+                    if (bpmAnimation == null) {
+                        bpmAnimation = createPulseAnimation()
+                        ivHeartIcon.startAnimation(bpmAnimation)
+                    }
+                } else {
+                    if (bpmAnimation != null) {
+                        ivHeartIcon.clearAnimation()
+                        bpmAnimation = null
+                    }
+                }
+
+                // Gestione Ossigeno ("O2") -> Mappato sul firmware dello SmartRingManager
+                if (activeType == "O2") {
+                    if (o2Animation == null) {
+                        o2Animation = createPulseAnimation()
+                        ivO2Icon.startAnimation(o2Animation)
+                    }
+                } else {
+                    if (o2Animation != null) {
+                        ivO2Icon.clearAnimation()
+                        o2Animation = null
+                    }
+                }
+
+                // Gestione Pressione ("PRESSURE") -> Mappato sul firmware dello SmartRingManager
+                if (activeType == "PRESSURE") {
+                    if (bpAnimation == null) {
+                        bpAnimation = createPulseAnimation()
+                        ivBpIcon.startAnimation(bpAnimation)
+                    }
+                } else {
+                    if (bpAnimation != null) {
+                        ivBpIcon.clearAnimation()
+                        bpAnimation = null
+                    }
+                }
+            }
+
             pollHandler.postDelayed(this, 2000)
         }
     }
@@ -90,6 +148,9 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
         tvSpO2Value.text = lastSpO2
         tvBpValue.text = lastBP
 
+        // Gestione iniziale ripristino animazioni in background
+        gestisciAnimazioniPreesistenti()
+
         MotionSessionManager.initialize(requireContext())
         MotionSessionManager.addObserver(this)
         renderMotionState(MotionSessionManager.getState())
@@ -114,6 +175,33 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
         btnToggleHR = view.findViewById(R.id.btnToggleHR)
         btnStartSpO2 = view.findViewById(R.id.btnStartSpO2)
         btnStartBP = view.findViewById(R.id.btnStartBP)
+
+        // Associazione icone grafiche
+        ivHeartIcon = view.findViewById(R.id.ivHeartIcon)
+        ivO2Icon = view.findViewById(R.id.ivO2Icon)
+        ivBpIcon = view.findViewById(R.id.ivBpIcon)
+    }
+
+    private fun createPulseAnimation(): Animation {
+        return AlphaAnimation(1.0f, 0.25f).apply {
+            duration = 750
+            repeatMode = Animation.REVERSE
+            repeatCount = Animation.INFINITE
+        }
+    }
+
+    private fun gestisciAnimazioniPreesistenti() {
+        val activeType = ringManager?.getActiveMeasurementType()
+        if (activeType == "BPM") {
+            bpmAnimation = createPulseAnimation()
+            ivHeartIcon.startAnimation(bpmAnimation)
+        } else if (activeType == "O2") {
+            o2Animation = createPulseAnimation()
+            ivO2Icon.startAnimation(o2Animation)
+        } else if (activeType == "PRESSURE") {
+            bpAnimation = createPulseAnimation()
+            ivBpIcon.startAnimation(bpAnimation)
+        }
     }
 
     private fun setupSmartRingButtons() {
@@ -123,6 +211,8 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                 if (ringManager?.getActiveMeasurementType() == "BPM") {
                     ringManager?.stopAllMeasurements()
                     btnToggleHR.text = "START BPM"
+                    ivHeartIcon.clearAnimation()
+                    bpmAnimation = null
                     context?.stopService(Intent(context, HealthMonitoringService::class.java))
                 } else {
                     val serviceIntent = Intent(context, HealthMonitoringService::class.java)
@@ -134,6 +224,9 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
 
                     ringManager?.startHeartRateMeasurement()
                     btnToggleHR.text = "STOP BPM"
+
+                    bpmAnimation = createPulseAnimation()
+                    ivHeartIcon.startAnimation(bpmAnimation)
                 }
             } else {
                 Toast.makeText(context, "Connect the smart ring from profile tab before measuring", Toast.LENGTH_SHORT).show()
@@ -151,6 +244,9 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                     }
 
                     ringManager?.startSpO2Measurement()
+
+                    o2Animation = createPulseAnimation()
+                    ivO2Icon.startAnimation(o2Animation)
                 } else {
                     Toast.makeText(context, "Measurement already in progress. Stop current activity first.", Toast.LENGTH_SHORT).show()
                 }
@@ -170,6 +266,9 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                     }
 
                     ringManager?.startBloodPressureMeasurement()
+
+                    bpAnimation = createPulseAnimation()
+                    ivBpIcon.startAnimation(bpAnimation)
                 } else {
                     Toast.makeText(context, "Measurement already in progress. Stop current activity first.", Toast.LENGTH_SHORT).show()
                 }
@@ -191,19 +290,15 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
 
     private fun showCalibrationDialog() {
         val context = context ?: return
-
-        // Creiamo il Dialog nativo Material 3 usando il percorso esplicito
         val builder = com.google.android.material.dialog.MaterialAlertDialogBuilder(context)
         builder.setTitle("Blood Pressure Calibration")
         builder.setMessage("Stay still. Start the measurement on the smart ring and enter the values just read from your upper arm blood pressure monitor below:")
 
-        // Contenitore principale verticale
         val linearLayout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(60, 24, 60, 24)
         }
 
-        // Primo box di input tradizionale per la pressione Sistolica
         val etSystolic = EditText(context).apply {
             hint = "Systolic Pressure [60-250]"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
@@ -211,16 +306,14 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
             setHintTextColor(resources.getColor(R.color.text_secondary))
         }
 
-        // Secondo box di input tradizionale per la pressione Diastolica
         val etDiastolic = EditText(context).apply {
             hint = "Diastolic Pressure [40-150]"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
             setTextColor(resources.getColor(R.color.text_primary))
             setHintTextColor(resources.getColor(R.color.text_secondary))
-            setPadding(paddingLeft, 32, paddingRight, paddingBottom) // Spazio sopra l'input
+            setPadding(paddingLeft, 32, paddingRight, paddingBottom)
         }
 
-        // Aggiungiamo i box direttamente al layout senza passare da TextInputLayout
         linearLayout.addView(etSystolic)
         linearLayout.addView(etDiastolic)
         builder.setView(linearLayout)
@@ -290,18 +383,32 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
             if (isAdded) {
                 btnToggleHR.text = "START BPM"
                 tvBpmValue.text = lastBpm
+                stopAllIconAnimations()
             }
         }
     }
 
     override fun onDataReceived(result: Decoder.DecodedResult) {
-        if (result.type == "CALIBRATION_RESULT") {
+        if (result.type == "SPO2" || result.type == "BLOOD_PRESSURE" || result.type == "CALIBRATION_RESULT") {
             activity?.runOnUiThread {
                 if (!isAdded) return@runOnUiThread
-                when (result.calibrationStatus) {
-                    0 -> Toast.makeText(context, "Calibration completed successfully!", Toast.LENGTH_LONG).show()
-                    1 -> Toast.makeText(context, "Error: Out-of-range parameters", Toast.LENGTH_SHORT).show()
-                    2 -> Toast.makeText(context, "Calibration rejected", Toast.LENGTH_LONG).show()
+
+                when (result.type) {
+                    "SPO2" -> {
+                        ivO2Icon.clearAnimation()
+                        o2Animation = null
+                    }
+                    "BLOOD_PRESSURE" -> {
+                        ivBpIcon.clearAnimation()
+                        bpAnimation = null
+                    }
+                    "CALIBRATION_RESULT" -> {
+                        when (result.calibrationStatus) {
+                            0 -> Toast.makeText(context, "Calibration completed successfully!", Toast.LENGTH_LONG).show()
+                            1 -> Toast.makeText(context, "Error: Out-of-range parameters", Toast.LENGTH_SHORT).show()
+                            2 -> Toast.makeText(context, "Calibration rejected", Toast.LENGTH_LONG).show()
+                        }
+                    }
                 }
             }
         }
@@ -309,7 +416,10 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
 
     override fun onError(msg: String) {
         activity?.runOnUiThread {
-            if (isAdded) Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            if (isAdded) {
+                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                stopAllIconAnimations()
+            }
         }
     }
 
@@ -344,18 +454,24 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
         MotionSessionManager.addObserver(this)
         renderMotionState(MotionSessionManager.getState())
         aggiornaUiDaDatabase()
-        pollHandler.post(pollRunnable)
 
         val activeInstance = SmartRingManager.Companion.getActiveInstance()
         if (activeInstance != null) {
             ringManager = activeInstance
-            btnToggleHR.text = if (ringManager?.getActiveMeasurementType() == "BPM") "STOP BPM" else "START BPM"
+
+            val activeType = ringManager?.getActiveMeasurementType()
+            btnToggleHR.text = if (activeType == "BPM") "STOP BPM" else "START BPM"
 
             if (ringManager?.isConnected() == false) {
                 btnToggleHR.text = "START BPM"
                 tvBpmValue.text = lastBpm
+                stopAllIconAnimations()
             }
         }
+
+        // Forza l'avvio immediato del loop ricorrente che gestisce anche il ripristino delle icone
+        pollHandler.removeCallbacks(pollRunnable)
+        pollHandler.post(pollRunnable)
     }
 
     override fun onPause() {
@@ -373,6 +489,17 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
     private fun startPulseAnimation() {
         animatePulseRing(pulseRing3, 2200L, 0L)
         animatePulseRing(pulseRing2, 2200L, 400L)
+    }
+
+    private fun stopAllIconAnimations() {
+        activity?.runOnUiThread {
+            ivHeartIcon.clearAnimation()
+            ivO2Icon.clearAnimation()
+            ivBpIcon.clearAnimation()
+            bpmAnimation = null
+            o2Animation = null
+            bpAnimation = null
+        }
     }
 
     private fun animatePulseRing(view: View, durationMs: Long, delay: Long) {

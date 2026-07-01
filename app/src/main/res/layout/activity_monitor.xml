@@ -243,7 +243,7 @@
                     android:id="@+id/ivO2Icon"
                     android:layout_width="32dp"
                     android:layout_height="32dp"
-                    android:src="@drawable/ic_cloud_ml"
+                    android:src="@drawable/ic_blood_oxygen"
                     app:tint="@color/health_o2"
                     android:layout_centerVertical="true"/>
 
@@ -305,7 +305,7 @@
                     android:id="@+id/ivBpIcon"
                     android:layout_width="32dp"
                     android:layout_height="32dp"
-                    android:src="@drawable/chart_pipe_svgrepo_com"
+                    android:src="@drawable/ic_blood_pressure"
                     app:tint="@color/health_pressure"
                     android:layout_centerVertical="true"/>
 
