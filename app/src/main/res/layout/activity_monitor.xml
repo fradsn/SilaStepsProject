@@ -294,7 +294,7 @@
             app:cardBackgroundColor="@color/surface_dark"
             app:strokeWidth="1dp"
             app:strokeColor="@color/surface_variant_dark"
-            android:layout_marginBottom="32dp">
+            android:layout_marginBottom="12dp">
 
             <RelativeLayout
                 android:layout_width="match_parent"
@@ -361,6 +361,64 @@
                     android:textColor="@color/health_pressure"
                     app:backgroundTint="@color/primary_container"
                     app:cornerRadius="12dp" />
+            </RelativeLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardAutoMeasurement"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="18dp"
+            app:cardBackgroundColor="@color/surface_dark"
+            app:strokeWidth="1dp"
+            app:strokeColor="@color/surface_variant_dark"
+            android:layout_marginBottom="32dp">
+
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="16dp">
+
+                <ImageView
+                    android:id="@+id/ivCloudIcon"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:src="@drawable/ic_cloud_ml"
+                    app:tint="@color/text_primary"
+                    android:layout_centerVertical="true"/>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_toEndOf="@id/ivCloudIcon"
+                    android:layout_toStartOf="@+id/switchAutoMeasurement"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
+                    android:layout_centerVertical="true">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Auto Measurement"
+                        android:textColor="@color/text_primary"
+                        android:textStyle="bold"
+                        android:textSize="16sp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Cyclical measurement of                 BPM and SpO2"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchAutoMeasurement"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true" />
             </RelativeLayout>
         </com.google.android.material.card.MaterialCardView>
 

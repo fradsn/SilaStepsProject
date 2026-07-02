@@ -3,6 +3,7 @@ package com.example.myapplication.UI
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -29,6 +30,7 @@ import com.example.myapplication.Motion.session.MotionUiState
 import com.example.myapplication.R
 import com.example.myapplication.services.GestoreStatistiche
 import com.example.myapplication.services.HealthMonitoringService
+import com.google.android.material.switchmaterial.SwitchMaterial
 
 class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSessionManager.Observer {
 
@@ -47,6 +49,7 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
     private lateinit var btnToggleHR: Button
     private lateinit var btnStartSpO2: Button
     private lateinit var btnStartBP: Button
+    private lateinit var switchAutoMeasurement: SwitchMaterial
 
     private lateinit var ivHeartIcon: ImageView
     private lateinit var ivO2Icon: ImageView
@@ -73,8 +76,9 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
         override fun run() {
             aggiornaUiDaDatabase()
 
-            // IL CONTROLLO CONTINUO: Verifica lo stato dell'anello in tempo reale ad ogni ciclo (ogni 2 secondi)
             val activeType = ringManager?.getActiveMeasurementType()
+            val isAutoActive = HealthMonitoringService.isAutoMeasuringActive
+
             activity?.runOnUiThread {
                 if (!isAdded || view == null) return@runOnUiThread
 
@@ -84,14 +88,16 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                         bpmAnimation = createPulseAnimation()
                         ivHeartIcon.startAnimation(bpmAnimation)
                     }
+                    if (!isAutoActive) btnToggleHR.text = "STOP BPM"
                 } else {
                     if (bpmAnimation != null) {
                         ivHeartIcon.clearAnimation()
                         bpmAnimation = null
                     }
+                    if (!isAutoActive) btnToggleHR.text = "START BPM"
                 }
 
-                // Gestione Ossigeno ("O2") -> Mappato sul firmware dello SmartRingManager
+                // Gestione Ossigeno (O2)
                 if (activeType == "O2") {
                     if (o2Animation == null) {
                         o2Animation = createPulseAnimation()
@@ -104,7 +110,7 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                     }
                 }
 
-                // Gestione Pressione ("PRESSURE") -> Mappato sul firmware dello SmartRingManager
+                // Gestione Pressione (PRESSURE)
                 if (activeType == "PRESSURE") {
                     if (bpAnimation == null) {
                         bpAnimation = createPulseAnimation()
@@ -118,7 +124,7 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                 }
             }
 
-            pollHandler.postDelayed(this, 2000)
+            pollHandler.postDelayed(this, 1000)
         }
     }
 
@@ -143,12 +149,10 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
 
         ringManager = SmartRingManager.Companion.getActiveInstance()
 
-        btnToggleHR.text = if (ringManager?.getActiveMeasurementType() == "BPM") "STOP BPM" else "START BPM"
         tvBpmValue.text = lastBpm
         tvSpO2Value.text = lastSpO2
         tvBpValue.text = lastBP
 
-        // Gestione iniziale ripristino animazioni in background
         gestisciAnimazioniPreesistenti()
 
         MotionSessionManager.initialize(requireContext())
@@ -156,6 +160,49 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
         renderMotionState(MotionSessionManager.getState())
 
         setupSmartRingButtons()
+
+        // Carica lo stato memorizzato per impostare lo Switch
+        val sharedPref = requireContext().getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
+        val autoEnabled = sharedPref.getBoolean("auto_measurement_enabled", false)
+        switchAutoMeasurement.isChecked = autoEnabled
+        aggiornaStatoPulsantiManuali(autoEnabled)
+
+        switchAutoMeasurement.setOnCheckedChangeListener { buttonView, isChecked ->
+            if (isChecked) {
+                // VERIFICA SE L'ANELLO È EFFETTIVAMENTE CONNESSO
+                val isConnected = ringManager?.isConnected() == true
+                if (!isConnected) {
+                    // Se non è connesso, rimetti lo switch a false senza attivare la routine
+                    buttonView.isChecked = false
+                    Toast.makeText(context, "Smart Ring not connected!", Toast.LENGTH_LONG).show()
+                    return@setOnCheckedChangeListener
+                }
+
+                // Se connesso, procedi regolarmente
+                sharedPref.edit().putBoolean("auto_measurement_enabled", true).apply()
+                aggiornaStatoPulsantiManuali(true)
+
+                val serviceIntent = Intent(context, HealthMonitoringService::class.java).apply {
+                    action = "START_AUTO_MEASUREMENT"
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context?.startForegroundService(serviceIntent)
+                } else {
+                    context?.startService(serviceIntent)
+                }
+                Toast.makeText(context, "Auto measurement on", Toast.LENGTH_SHORT).show()
+            } else {
+                // Disattivazione programmata dall'utente
+                sharedPref.edit().putBoolean("auto_measurement_enabled", false).apply()
+                aggiornaStatoPulsantiManuali(false)
+
+                val serviceIntent = Intent(context, HealthMonitoringService::class.java).apply {
+                    action = "STOP_AUTO_MEASUREMENT"
+                }
+                context?.startService(serviceIntent)
+                Toast.makeText(context, "Auto measurement off", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun bindViews(view: View) {
@@ -175,11 +222,36 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
         btnToggleHR = view.findViewById(R.id.btnToggleHR)
         btnStartSpO2 = view.findViewById(R.id.btnStartSpO2)
         btnStartBP = view.findViewById(R.id.btnStartBP)
+        switchAutoMeasurement = view.findViewById(R.id.switchAutoMeasurement)
 
-        // Associazione icone grafiche
         ivHeartIcon = view.findViewById(R.id.ivHeartIcon)
         ivO2Icon = view.findViewById(R.id.ivO2Icon)
         ivBpIcon = view.findViewById(R.id.ivBpIcon)
+    }
+
+    // Modificato per impostare "AUTO" su tutti i pulsanti ed effettuare il corretto ripristino dei testi originari
+    private fun aggiornaStatoPulsantiManuali(isAutoActive: Boolean) {
+        activity?.runOnUiThread {
+            if (isAutoActive) {
+                // Disabilita i tre tasti e imposta il testo AUTO su tutti
+                btnToggleHR.isEnabled = false
+                btnStartSpO2.isEnabled = false
+                btnStartBP.isEnabled = false
+
+                btnToggleHR.text = "AUTO"
+                btnStartSpO2.text = "AUTO"
+                btnStartBP.text = "AUTO"
+            } else {
+                // Riabilita i tasti e ripristina i testi corretti di fabbrica
+                btnToggleHR.isEnabled = true
+                btnStartSpO2.isEnabled = true
+                btnStartBP.isEnabled = true
+
+                btnToggleHR.text = if (ringManager?.getActiveMeasurementType() == "BPM") "STOP BPM" else "START BPM"
+                btnStartSpO2.text = "MEASURE O₂"
+                btnStartBP.text = "MEASURE BP"
+            }
+        }
     }
 
     private fun createPulseAnimation(): Animation {
@@ -213,7 +285,6 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                     btnToggleHR.text = "START BPM"
                     ivHeartIcon.clearAnimation()
                     bpmAnimation = null
-                    context?.stopService(Intent(context, HealthMonitoringService::class.java))
                 } else {
                     val serviceIntent = Intent(context, HealthMonitoringService::class.java)
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -381,7 +452,9 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
         lastBpm = "--"
         activity?.runOnUiThread {
             if (isAdded) {
-                btnToggleHR.text = "START BPM"
+                if (!HealthMonitoringService.isAutoMeasuringActive) {
+                    btnToggleHR.text = "START BPM"
+                }
                 tvBpmValue.text = lastBpm
                 stopAllIconAnimations()
             }
@@ -459,17 +532,16 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
         if (activeInstance != null) {
             ringManager = activeInstance
 
-            val activeType = ringManager?.getActiveMeasurementType()
-            btnToggleHR.text = if (activeType == "BPM") "STOP BPM" else "START BPM"
+            val isAutoActive = HealthMonitoringService.isAutoMeasuringActive
+            aggiornaStatoPulsantiManuali(isAutoActive)
 
             if (ringManager?.isConnected() == false) {
-                btnToggleHR.text = "START BPM"
+                if (!isAutoActive) btnToggleHR.text = "START BPM"
                 tvBpmValue.text = lastBpm
                 stopAllIconAnimations()
             }
         }
 
-        // Forza l'avvio immediato del loop ricorrente che gestisce anche il ripristino delle icone
         pollHandler.removeCallbacks(pollRunnable)
         pollHandler.post(pollRunnable)
     }
