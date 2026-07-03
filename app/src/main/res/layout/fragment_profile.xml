@@ -1,183 +1,321 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="20dp"
+    android:fillViewport="true"
     android:background="@color/background_dark">
 
-    <RelativeLayout
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:layout_marginBottom="24dp">
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="24dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Profile"
+                android:textColor="@color/text_primary"
+                android:textSize="26sp"
+                android:textStyle="bold"
+                android:layout_alignParentStart="true"
+                android:layout_centerVertical="true" />
+
+            <ImageButton
+                android:id="@+id/logout_button"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/baseline_logout_24"
+                android:scaleType="fitCenter"
+                android:padding="8dp"
+                app:tint="@color/health_bpm" />
+        </RelativeLayout>
+
+        <com.google.android.material.imageview.ShapeableImageView
+            android:id="@+id/profile_image"
+            android:layout_width="110dp"
+            android:layout_height="110dp"
+            android:layout_gravity="center"
+            android:scaleType="centerCrop"
+            android:src="@drawable/user_svgrepo_com"
+            app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Full"
+            app:strokeWidth="2dp"
+            app:strokeColor="@color/surface_variant_dark"
+            android:layout_marginBottom="12dp"/>
 
         <TextView
-            android:layout_width="wrap_content"
+            android:id="@+id/profile_email"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Profile"
+            android:gravity="center"
+            android:text="Welcome"
             android:textColor="@color/text_primary"
-            android:textSize="26sp"
+            android:textSize="22sp"
             android:textStyle="bold"
-            android:layout_alignParentStart="true"
-            android:layout_centerVertical="true" />
+            android:layout_marginBottom="32dp" />
 
-        <ImageButton
-            android:id="@+id/logout_button"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_alignParentEnd="true"
-            android:layout_centerVertical="true"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/baseline_logout_24"
-            android:scaleType="fitCenter"
-            android:padding="8dp"
-            app:tint="@color/health_bpm" />
-    </RelativeLayout>
-
-    <com.google.android.material.imageview.ShapeableImageView
-        android:id="@+id/profile_image"
-        android:layout_width="110dp"
-        android:layout_height="110dp"
-        android:layout_gravity="center"
-        android:scaleType="centerCrop"
-        android:src="@drawable/user_svgrepo_com"
-        app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Full"
-        app:strokeWidth="2dp"
-        app:strokeColor="@color/surface_variant_dark"
-        android:layout_marginBottom="12dp"/>
-
-    <TextView
-        android:id="@+id/profile_email"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center"
-        android:text="Welcome"
-        android:textColor="@color/text_primary"
-        android:textSize="22sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="32dp" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="ACCOUNT &amp; DEVICES"
-        android:textColor="@color/text_secondary"
-        android:textSize="11sp"
-        android:textStyle="bold"
-        android:letterSpacing="0.1"
-        android:layout_marginBottom="12dp"
-        android:layout_marginStart="4dp"/>
-
-    <com.google.android.material.card.MaterialCardView
-        android:id="@+id/menuUserInfo"
-        android:layout_width="match_parent"
-        android:layout_height="68dp"
-        android:layout_marginBottom="12dp"
-        app:cardBackgroundColor="@color/surface_dark"
-        app:cardCornerRadius="16dp"
-        app:strokeWidth="1dp"
-        app:strokeColor="@color/surface_variant_dark"
-        android:clickable="true"
-        android:focusable="true"
-        android:foreground="?attr/selectableItemBackground">
-
-        <LinearLayout
+        <TextView
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="18dp">
+            android:layout_height="wrap_content"
+            android:text="ACCOUNT &amp; DEVICES"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.1"
+            android:layout_marginBottom="12dp"
+            android:layout_marginStart="4dp"/>
 
-            <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:src="@drawable/ic_account_box"
-                app:tint="@color/primary_neon" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
-                android:text="User Information"
-                android:textColor="@color/text_primary"
-                android:textSize="16sp"
-                android:textStyle="bold"/>
-        </LinearLayout>
-    </com.google.android.material.card.MaterialCardView>
-
-    <com.google.android.material.card.MaterialCardView
-        android:id="@+id/menuFindDevices"
-        android:layout_width="match_parent"
-        android:layout_height="68dp"
-        android:layout_marginBottom="12dp"
-        app:cardBackgroundColor="@color/surface_dark"
-        app:cardCornerRadius="16dp"
-        app:strokeWidth="1dp"
-        app:strokeColor="@color/surface_variant_dark"
-        android:clickable="true"
-        android:focusable="true"
-        android:foreground="?attr/selectableItemBackground">
-
-        <LinearLayout
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/menuUserInfo"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="18dp">
+            android:layout_height="68dp"
+            android:layout_marginBottom="12dp"
+            app:cardBackgroundColor="@color/surface_dark"
+            app:cardCornerRadius="16dp"
+            app:strokeWidth="1dp"
+            app:strokeColor="@color/surface_variant_dark"
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="?attr/selectableItemBackground">
 
-            <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:src="@android:drawable/ic_search_category_default"
-                app:tint="@color/health_shimmer" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="18dp">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
-                android:text="Pair New Devices"
-                android:textColor="@color/text_primary"
-                android:textSize="16sp"
-                android:textStyle="bold"/>
-        </LinearLayout>
-    </com.google.android.material.card.MaterialCardView>
+                <ImageView
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:src="@drawable/ic_account_box"
+                    app:tint="@color/primary_neon" />
 
-    <com.google.android.material.card.MaterialCardView
-        android:id="@+id/menuConnectedDevices"
-        android:layout_width="match_parent"
-        android:layout_height="68dp"
-        app:cardBackgroundColor="@color/surface_dark"
-        app:cardCornerRadius="16dp"
-        app:strokeWidth="1dp"
-        app:strokeColor="@color/surface_variant_dark"
-        android:clickable="true"
-        android:focusable="true"
-        android:foreground="?attr/selectableItemBackground">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="16dp"
+                    android:text="User Information"
+                    android:textColor="@color/text_primary"
+                    android:textSize="16sp"
+                    android:textStyle="bold"/>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
 
-        <LinearLayout
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/menuFindDevices"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="18dp">
+            android:layout_height="68dp"
+            android:layout_marginBottom="12dp"
+            app:cardBackgroundColor="@color/surface_dark"
+            app:cardCornerRadius="16dp"
+            app:strokeWidth="1dp"
+            app:strokeColor="@color/surface_variant_dark"
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="?attr/selectableItemBackground">
 
-            <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:src="@drawable/baseline_checklist_24"
-                app:tint="@color/health_o2" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="18dp">
 
-            <TextView
-                android:layout_width="wrap_content"
+                <ImageView
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:src="@android:drawable/ic_search_category_default"
+                    app:tint="@color/health_shimmer" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="16dp"
+                    android:text="Pair New Devices"
+                    android:textColor="@color/text_primary"
+                    android:textSize="16sp"
+                    android:textStyle="bold"/>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/menuConnectedDevices"
+            android:layout_width="match_parent"
+            android:layout_height="68dp"
+            android:layout_marginBottom="24dp"
+            app:cardBackgroundColor="@color/surface_dark"
+            app:cardCornerRadius="16dp"
+            app:strokeWidth="1dp"
+            app:strokeColor="@color/surface_variant_dark"
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="?attr/selectableItemBackground">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="18dp">
+
+                <ImageView
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:src="@drawable/baseline_checklist_24"
+                    app:tint="@color/health_o2" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="16dp"
+                    android:text="Connected Hardware"
+                    android:textColor="@color/text_primary"
+                    android:textSize="16sp"
+                    android:textStyle="bold"/>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="HARDWARE CONFIGURATION"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.1"
+            android:layout_marginBottom="12dp"
+            android:layout_marginStart="4dp"/>
+
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardAutoSettings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            app:cardCornerRadius="16dp"
+            app:cardBackgroundColor="@color/surface_dark"
+            app:strokeWidth="1dp"
+            app:strokeColor="@color/surface_variant_dark">
+
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
-                android:text="Connected Hardware"
-                android:textColor="@color/text_primary"
-                android:textSize="16sp"
-                android:textStyle="bold"/>
-        </LinearLayout>
-    </com.google.android.material.card.MaterialCardView>
+                android:orientation="vertical"
+                android:padding="16dp">
 
-</LinearLayout>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Auto-Measurement Interval"
+                    android:textColor="@color/text_primary"
+                    android:textStyle="bold"
+                    android:textSize="16sp"
+                    android:layout_marginBottom="4dp"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Adjust the continuous heart rate (BPM) monitoring duration per loop."
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp"
+                    android:layout_marginBottom="16dp"/>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="BPM Window Duration:"
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp"/>
+
+                    <Spinner
+                        android:id="@+id/spinnerBpmDuration"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:backgroundTint="@color/text_primary" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardBpCalibration"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="16dp"
+            app:cardBackgroundColor="@color/surface_dark"
+            app:strokeWidth="1dp"
+            app:strokeColor="@color/surface_variant_dark">
+
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="16dp">
+
+                <ImageView
+                    android:id="@+id/ivProfileBpIcon"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:src="@drawable/ic_blood_pressure"
+                    app:tint="@color/health_pressure"
+                    android:layout_centerVertical="true"/>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_toEndOf="@id/ivProfileBpIcon"
+                    android:layout_toStartOf="@+id/btnCalibrateBPProfile"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
+                    android:layout_centerVertical="true">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Smart Ring Calibration"
+                        android:textColor="@color/text_primary"
+                        android:textStyle="bold"
+                        android:textSize="16sp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Calibrate reference values using a clinical monitor."
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnCalibrateBPProfile"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true"
+                    android:text="CALIBRATE"
+                    android:textSize="12sp"
+                    android:textColor="@color/health_pressure"
+                    app:backgroundTint="@color/primary_container"
+                    app:cornerRadius="12dp" />
+            </RelativeLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>

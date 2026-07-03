@@ -14,10 +14,15 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -37,6 +42,7 @@ import com.example.myapplication.Motion.session.MotionUiState
 import com.example.myapplication.R
 import com.example.myapplication.services.HealthMonitoringService
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 import com.google.firebase.auth.FirebaseAuth
 
@@ -45,6 +51,11 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
     private var tvBatteryLevelInSheet: TextView? = null
     private val auth = FirebaseAuth.getInstance()
     private var deviceAdapter: DeviceAdapter? = null
+
+    // Riferimenti per le opzioni avanzate hardware
+    private lateinit var spinnerBpmDuration: Spinner
+    private lateinit var btnCalibrateBPProfile: MaterialButton
+    private var ringManager: SmartRingManager? = null
 
     private val pollHandler = Handler(Looper.getMainLooper())
     private val pollRunnable = object : Runnable {
@@ -120,6 +131,8 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
         MotionSessionManager.initialize(requireContext())
         MotionSessionManager.addObserver(this)
 
+        ringManager = SmartRingManager.Companion.getActiveInstance()
+
         view.findViewById<MaterialCardView>(R.id.menuUserInfo)?.setOnClickListener { showUserInfoBottomSheet() }
 
         view.findViewById<MaterialCardView>(R.id.menuFindDevices)?.setOnClickListener {
@@ -170,6 +183,118 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
             startActivity(Intent(requireActivity(), Login::class.java))
             requireActivity().finish()
         }
+
+        // Inizializzazione della nuova sezione hardware avanzata
+        setupAdvancedSettings(view)
+    }
+
+    private fun setupAdvancedSettings(view: View) {
+        spinnerBpmDuration = view.findViewById(R.id.spinnerBpmDuration)
+        btnCalibrateBPProfile = view.findViewById(R.id.btnCalibrateBPProfile)
+
+        val sharedPref = requireContext().getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
+
+        // Opzioni dello Spinner mappate in millisecondi (3 min e 20 secondi = 200.000 ms come valore di fabbrica)
+        val options = arrayOf("1 Minute", "2 Minutes", "3 Minutes 20s (Default)", "5 Minutes")
+        val valuesInMs = arrayOf(1 * 60 * 1000L, 2 * 60 * 1000L, 200 * 1000L, 5 * 60 * 1000L)
+
+        val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, options).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        spinnerBpmDuration.adapter = adapter
+
+        // Recupera l'intervallo precedentemente salvato
+        val savedDurationMs = sharedPref.getLong("auto_bpm_window_ms", 200 * 1000L)
+        val defaultIndex = valuesInMs.indexOf(savedDurationMs).let { if (it == -1) 2 else it }
+        spinnerBpmDuration.setSelection(defaultIndex)
+
+        spinnerBpmDuration.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val selectedMs = valuesInMs[position]
+                val currentSavedMs = sharedPref.getLong("auto_bpm_window_ms", 200 * 1000L)
+
+                if (selectedMs != currentSavedMs) {
+                    sharedPref.edit().putLong("auto_bpm_window_ms", selectedMs).apply()
+                    Toast.makeText(context, "Loop interval updated. Will apply to next cycle.", Toast.LENGTH_SHORT).show()
+                }
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
+        // Logica pulsante di calibrazione della pressione con controllo di sicurezza hardware integrato
+        btnCalibrateBPProfile.setOnClickListener {
+            ringManager = SmartRingManager.Companion.getActiveInstance()
+
+            // 1. Verifica preliminare della connessione Bluetooth
+            if (ringManager?.isConnected() == false || ringManager == null) {
+                Toast.makeText(context, "Smart ring not connected", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            // 2. Controllo se la modalità Automatica in background è attiva
+            if (HealthMonitoringService.isAutoMeasuringActive) {
+                Toast.makeText(context, "Cannot calibrate: Automatic monitoring is currently running. Disable it first.", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+
+            // 3. Controllo se l'anello sta eseguendo un'altra misurazione manuale incompatibile (BPM o SpO2)
+            val activeType = ringManager?.getActiveMeasurementType()
+            if (ringManager?.isMeasuring() == true && activeType != "PRESSURE") {
+                Toast.makeText(context, "Cannot calibrate: Smart Ring is busy measuring $activeType. Stop current activity first.", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+
+            // Se supera tutti i filtri di sicurezza, mostra il dialog
+            showBpCalibrationDialog()
+        }
+    }
+
+    private fun showBpCalibrationDialog() {
+        val context = context ?: return
+        val builder = com.google.android.material.dialog.MaterialAlertDialogBuilder(context)
+        builder.setTitle("Blood Pressure Calibration")
+        builder.setMessage("Stay still. Start the measurement on the smart ring and enter the values just read from your upper arm blood pressure monitor below:")
+
+        val linearLayout = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(60, 24, 60, 24)
+        }
+
+        val etSystolic = EditText(context).apply {
+            hint = "Systolic Pressure [60-250]"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setTextColor(resources.getColor(R.color.text_primary))
+            setHintTextColor(resources.getColor(R.color.text_secondary))
+        }
+
+        val etDiastolic = EditText(context).apply {
+            hint = "Diastolic Pressure [40-150]"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setTextColor(resources.getColor(R.color.text_primary))
+            setHintTextColor(resources.getColor(R.color.text_secondary))
+            setPadding(paddingLeft, 32, paddingRight, paddingBottom)
+        }
+
+        linearLayout.addView(etSystolic)
+        linearLayout.addView(etDiastolic)
+        builder.setView(linearLayout)
+
+        builder.setPositiveButton("Calibrate") { dialog, _ ->
+            val sysStr = etSystolic.text.toString()
+            val diaStr = etDiastolic.text.toString()
+
+            if (sysStr.isNotEmpty() && diaStr.isNotEmpty()) {
+                val systolic = sysStr.toIntOrNull() ?: 0
+                val diastolic = diaStr.toIntOrNull() ?: 0
+                ringManager?.sendBloodPressureCalibration(systolic, diastolic)
+            } else {
+                Toast.makeText(context, "Please fill in both fields to proceed", Toast.LENGTH_SHORT).show()
+            }
+            dialog.dismiss()
+        }
+
+        builder.setNegativeButton("Cancel") { dialog, _ -> dialog.dismiss() }
+        builder.show()
     }
 
     private fun showConnectedDeviceBottomSheet() {
@@ -189,7 +314,6 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
 
         val activeRing = SmartRingManager.getActiveInstance()
 
-        // Logica Smart Ring con protezioni anti-crash
         if (activeRing?.isConnected() == true) {
             cardRing?.visibility = View.VISIBLE
             tvRingName?.text = "Smart Ring"
@@ -204,7 +328,6 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
                     context?.stopService(Intent(context, HealthMonitoringService::class.java))
                     cardRing?.visibility = View.GONE
 
-                    // Chiudiamo il dialog in modo pulito se non ci sono altri sensori attivi
                     if (cardShimmer == null || cardShimmer.isGone || cardShimmer.visibility == View.GONE) {
                         dialog.dismiss()
                     }
@@ -217,7 +340,6 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
             cardRing?.visibility = View.GONE
         }
 
-        // Logica Shimmer con protezioni anti-crash
         if (MotionSessionManager.isShimmerConnected()) {
             cardShimmer?.visibility = View.VISIBLE
             tvShimmerName?.text = "Shimmer3 Node"
@@ -324,6 +446,7 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
 
     override fun onResume() {
         super.onResume()
+        ringManager = SmartRingManager.Companion.getActiveInstance()
         pollHandler.post(pollRunnable)
     }
 

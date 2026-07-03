@@ -25,8 +25,7 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener {
     private val autoMeasureHandler = Handler(Looper.getMainLooper())
     private var isAutoMeasuring = false
 
-    // Configurazione intervalli esatti (espressi in Millisecondi)
-    private val BPM_WINDOW = 200 * 1000L                // Durata monitoraggio BPM: 3 minuti e 20 secondi (200s)
+    // Configurazione intervalli (espressi in Millisecondi)
     private val SPO2_WINDOW = 30 * 1000L                // Durata singola misurazione SpO2: 30 secondi (30s)
     private val GAP_WINDOW = 5 * 1000L                  // Secondi di tolleranza per pulizia hardware: 5 secondi (5s)
 
@@ -77,46 +76,50 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener {
     }
 
     // =====================================================================================
-    // CORE LOGIC: PIPELINE DI MISURAZIONE CONTINUA A 4 MINUTI (BPM -> GAP -> SpO2 -> GAP -> LOOP)
+    // CORE LOGIC: PIPELINE DI MISURAZIONE CONTINUA ADATTIVA E DINAMICA (BPM -> GAP -> SpO2 -> GAP -> LOOP)
     // =====================================================================================
     private val autoMeasurementRunnable = object : Runnable {
         override fun run() {
             if (!isAutoMeasuring) return
 
             if (ringManager?.isConnected() == true) {
-                Log.d(TAG, "[AUTO-CYCLE] Inizio Sequenza: Fase 1 - Avvio BPM (3 min e 20 sec)")
+                // Legge in tempo reale la durata dei BPM configurata dall'utente nel Profilo
+                val sharedPref = getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
+                val dynamicBpmWindow = sharedPref.getLong("auto_bpm_window_ms", 200 * 1000L) // Default: 3m 20s
+
+                Log.d(TAG, "[AUTO-CYCLE] Inizio Sequenza: Fase 1 - Avvio BPM per ${dynamicBpmWindow / 1000} secondi")
                 ringManager?.startHeartRateMeasurement()
 
-                // 1. Scaduti i 3m 20s di BPM, fermiamo l'anello per la prima sosta di tolleranza (5 secondi)
+                // 1. Scaduti i minuti dinamici di BPM, fermiamo l'anello per la prima sosta di tolleranza (5 secondi)
                 autoMeasureHandler.postDelayed({
                     if (!isAutoMeasuring) return@postDelayed
                     Log.d(TAG, "[AUTO-CYCLE] Pausa di Tolleranza: Stop temporaneo prima di SpO2 (5 secondi)")
                     ringManager?.stopAllMeasurements()
 
-                    // 2. Passati i 5 secondi di sosta (a 3m 25s), avviamo l'Ossigeno (SpO2) per 30 secondi
+                    // 2. Passati i 5 secondi di sosta, avviamo l'Ossigeno (SpO2) per 30 secondi
                     autoMeasureHandler.postDelayed({
                         if (!isAutoMeasuring) return@postDelayed
                         Log.d(TAG, "[AUTO-CYCLE] Fase 2 - Avvio SpO2 isolato (30 secondi)")
                         ringManager?.startSpO2Measurement()
 
-                        // 3. Scaduti i 30 secondi di SpO2 (a 3m 55s), fermiamo l'anello per la seconda sosta (5 secondi)
+                        // 3. Scaduti i 30 secondi di SpO2, fermiamo l'anello per la seconda sosta (5 secondi)
                         autoMeasureHandler.postDelayed({
                             if (!isAutoMeasuring) return@postDelayed
                             Log.d(TAG, "[AUTO-CYCLE] Pausa di Tolleranza: Stop temporaneo prima di ricominciare (5 secondi)")
                             ringManager?.stopAllMeasurements()
 
-                            // 4. Passati gli ultimi 5 secondi di tolleranza (a 4m 00s), il macro-ciclo ricomincia subito!
+                            // 4. Passati gli ultimi 5 secondi di tolleranza, la catena ricomincia subito da capo!
                             autoMeasureHandler.postDelayed({
                                 if (!isAutoMeasuring) return@postDelayed
-                                Log.d(TAG, "[AUTO-CYCLE] Raggiunti i 4 minuti esatti. Il ciclo riparte immediatamente da capo.")
-                                this.run() // Richiamo ricorsivo per far ripartire la catena temporale
+                                Log.d(TAG, "[AUTO-CYCLE] Macro-ciclo completato. Il loop riparte immediatamente.")
+                                this.run() // Richiamo ricorsivo per iniziare il nuovo ciclo con la finestra aggiornata
                             }, GAP_WINDOW)
 
                         }, SPO2_WINDOW)
 
                     }, GAP_WINDOW)
 
-                }, BPM_WINDOW)
+                }, dynamicBpmWindow) // <--- Finestra temporale dinamica ereditata dallo Spinner
 
             } else {
                 Log.w(TAG, "[AUTO-CYCLE] Tentativo fallito: Smart Ring non connesso. Riprovo tra 10 secondi.")
@@ -130,7 +133,7 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener {
             if (!isAutoMeasuring) {
                 isAutoMeasuring = true
                 isAutoMeasuringActive = true
-                Log.d(TAG, "Inizializzazione routine di misurazione ciclica continua a 4 minuti avviata.")
+                Log.d(TAG, "Inizializzazione routine di misurazione ciclica dinamica avviata.")
                 autoMeasureHandler.post(autoMeasurementRunnable)
             }
         } else {
