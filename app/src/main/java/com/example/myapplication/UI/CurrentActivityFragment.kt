@@ -66,7 +66,7 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
 
     private var ringManager: SmartRingManager? = null
 
-    // Riferimenti alle animazioni di pulsazione
+    // Animation references
     private var bpmAnimation: Animation? = null
     private var o2Animation: Animation? = null
     private var bpAnimation: Animation? = null
@@ -74,7 +74,7 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
     private val pollHandler = Handler(Looper.getMainLooper())
     private val pollRunnable = object : Runnable {
         override fun run() {
-            aggiornaUiDaDatabase()
+            refreshUiFromDatabase()
 
             val activeType = ringManager?.getActiveMeasurementType()
             val isAutoActive = HealthMonitoringService.isAutoMeasuringActive
@@ -82,7 +82,7 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
             activity?.runOnUiThread {
                 if (!isAdded || view == null) return@runOnUiThread
 
-                // Gestione Cuore (BPM)
+                // Heart Rate Management (BPM)
                 if (activeType == "BPM") {
                     if (bpmAnimation == null) {
                         bpmAnimation = createPulseAnimation()
@@ -97,7 +97,7 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                     if (!isAutoActive) btnToggleHR.text = "START BPM"
                 }
 
-                // Gestione Ossigeno (O2)
+                // Oxygen Management (O2)
                 if (activeType == "O2") {
                     if (o2Animation == null) {
                         o2Animation = createPulseAnimation()
@@ -110,7 +110,7 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                     }
                 }
 
-                // Gestione Pressione (PRESSURE)
+                // Blood Pressure Management (PRESSURE)
                 if (activeType == "PRESSURE") {
                     if (bpAnimation == null) {
                         bpAnimation = createPulseAnimation()
@@ -153,7 +153,7 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
         tvSpO2Value.text = lastSpO2
         tvBpValue.text = lastBP
 
-        gestisciAnimazioniPreesistenti()
+        handlePreExistingAnimations()
 
         MotionSessionManager.initialize(requireContext())
         MotionSessionManager.addObserver(this)
@@ -161,26 +161,23 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
 
         setupSmartRingButtons()
 
-        // Carica lo stato memorizzato per impostare lo Switch
+        // Load auto-measurement preference state
         val sharedPref = requireContext().getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
         val autoEnabled = sharedPref.getBoolean("auto_measurement_enabled", false)
         switchAutoMeasurement.isChecked = autoEnabled
-        aggiornaStatoPulsantiManuali(autoEnabled)
+        updateManualButtonsState(autoEnabled)
 
         switchAutoMeasurement.setOnCheckedChangeListener { buttonView, isChecked ->
             if (isChecked) {
-                // VERIFICA SE L'ANELLO È EFFETTIVAMENTE CONNESSO
                 val isConnected = ringManager?.isConnected() == true
                 if (!isConnected) {
-                    // Se non è connesso, rimetti lo switch a false senza attivare la routine
                     buttonView.isChecked = false
-                    Toast.makeText(context, "Smart Ring not connected!", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Smart Ring not connected", Toast.LENGTH_SHORT).show()
                     return@setOnCheckedChangeListener
                 }
 
-                // Se connesso, procedi regolarmente
                 sharedPref.edit().putBoolean("auto_measurement_enabled", true).apply()
-                aggiornaStatoPulsantiManuali(true)
+                updateManualButtonsState(true)
 
                 val serviceIntent = Intent(context, HealthMonitoringService::class.java).apply {
                     action = "START_AUTO_MEASUREMENT"
@@ -190,17 +187,16 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                 } else {
                     context?.startService(serviceIntent)
                 }
-                Toast.makeText(context, "Auto measurement on", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Auto-monitoring enabled", Toast.LENGTH_SHORT).show()
             } else {
-                // Disattivazione programmata dall'utente
                 sharedPref.edit().putBoolean("auto_measurement_enabled", false).apply()
-                aggiornaStatoPulsantiManuali(false)
+                updateManualButtonsState(false)
 
                 val serviceIntent = Intent(context, HealthMonitoringService::class.java).apply {
                     action = "STOP_AUTO_MEASUREMENT"
                 }
                 context?.startService(serviceIntent)
-                Toast.makeText(context, "Auto measurement off", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Auto-monitoring disabled", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -229,11 +225,9 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
         ivBpIcon = view.findViewById(R.id.ivBpIcon)
     }
 
-    // Modificato per impostare "AUTO" su tutti i pulsanti ed effettuare il corretto ripristino dei testi originari
-    private fun aggiornaStatoPulsantiManuali(isAutoActive: Boolean) {
+    private fun updateManualButtonsState(isAutoActive: Boolean) {
         activity?.runOnUiThread {
             if (isAutoActive) {
-                // Disabilita i tre tasti e imposta il testo AUTO su tutti
                 btnToggleHR.isEnabled = false
                 btnStartSpO2.isEnabled = false
                 btnStartBP.isEnabled = false
@@ -242,7 +236,6 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                 btnStartSpO2.text = "AUTO"
                 btnStartBP.text = "AUTO"
             } else {
-                // Riabilita i tasti e ripristina i testi corretti di fabbrica
                 btnToggleHR.isEnabled = true
                 btnStartSpO2.isEnabled = true
                 btnStartBP.isEnabled = true
@@ -262,7 +255,7 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
         }
     }
 
-    private fun gestisciAnimazioniPreesistenti() {
+    private fun handlePreExistingAnimations() {
         val activeType = ringManager?.getActiveMeasurementType()
         if (activeType == "BPM") {
             bpmAnimation = createPulseAnimation()
@@ -300,7 +293,7 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                     ivHeartIcon.startAnimation(bpmAnimation)
                 }
             } else {
-                Toast.makeText(context, "Connect the smart ring from profile tab before measuring", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Pair device in profile tab first", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -319,7 +312,7 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                     o2Animation = createPulseAnimation()
                     ivO2Icon.startAnimation(o2Animation)
                 } else {
-                    Toast.makeText(context, "Measurement already in progress. Stop current activity first.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Device busy. Stop current activity.", Toast.LENGTH_SHORT).show()
                 }
             } else {
                 Toast.makeText(context, "Smart ring not connected", Toast.LENGTH_SHORT).show()
@@ -341,7 +334,7 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                     bpAnimation = createPulseAnimation()
                     ivBpIcon.startAnimation(bpAnimation)
                 } else {
-                    Toast.makeText(context, "Measurement already in progress. Stop current activity first.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Device busy. Stop current activity.", Toast.LENGTH_SHORT).show()
                 }
             } else {
                 Toast.makeText(context, "Smart ring not connected", Toast.LENGTH_SHORT).show()
@@ -349,6 +342,12 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
         }
 
         btnStartBP.setOnLongClickListener {
+            // Safety lock check before allowing calibration shortcut
+            if (HealthMonitoringService.isAutoMeasuringActive) {
+                Toast.makeText(context, "Cannot calibrate during auto-monitoring", Toast.LENGTH_SHORT).show()
+                return@setOnLongClickListener true
+            }
+
             if (ringManager?.isConnected() == true) {
                 showCalibrationDialog()
                 true
@@ -398,7 +397,7 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                 val diastolic = diaStr.toIntOrNull() ?: 0
                 ringManager?.sendBloodPressureCalibration(systolic, diastolic)
             } else {
-                Toast.makeText(context, "Please fill in both fields to proceed", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Fill in both fields to proceed", Toast.LENGTH_SHORT).show()
             }
             dialog.dismiss()
         }
@@ -477,9 +476,9 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                     }
                     "CALIBRATION_RESULT" -> {
                         when (result.calibrationStatus) {
-                            0 -> Toast.makeText(context, "Calibration completed successfully!", Toast.LENGTH_LONG).show()
-                            1 -> Toast.makeText(context, "Error: Out-of-range parameters", Toast.LENGTH_SHORT).show()
-                            2 -> Toast.makeText(context, "Calibration rejected", Toast.LENGTH_LONG).show()
+                            0 -> Toast.makeText(context, "Calibration successful", Toast.LENGTH_SHORT).show()
+                            1 -> Toast.makeText(context, "Calibration error: Out-of-range parameters", Toast.LENGTH_SHORT).show()
+                            2 -> Toast.makeText(context, "Calibration rejected by device", Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
@@ -496,7 +495,7 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
         }
     }
 
-    private fun aggiornaUiDaDatabase() {
+    private fun refreshUiFromDatabase() {
         if (!isAdded) return
         try {
             val listaBpm = gestoreStatistiche.getBpm()
@@ -526,14 +525,14 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
         super.onResume()
         MotionSessionManager.addObserver(this)
         renderMotionState(MotionSessionManager.getState())
-        aggiornaUiDaDatabase()
+        refreshUiFromDatabase()
 
         val activeInstance = SmartRingManager.Companion.getActiveInstance()
         if (activeInstance != null) {
             ringManager = activeInstance
 
             val isAutoActive = HealthMonitoringService.isAutoMeasuringActive
-            aggiornaStatoPulsantiManuali(isAutoActive)
+            updateManualButtonsState(isAutoActive)
 
             if (ringManager?.isConnected() == false) {
                 if (!isAutoActive) btnToggleHR.text = "START BPM"

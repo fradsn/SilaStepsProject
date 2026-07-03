@@ -12,6 +12,7 @@ import com.example.myapplication.R
 import com.google.firebase.auth.FirebaseAuth
 
 class ResetActivity : AppCompatActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -20,32 +21,32 @@ class ResetActivity : AppCompatActivity() {
 
         val textEmail : EditText = findViewById(R.id.emailForReset)
         val btnReset : Button = findViewById(R.id.resetBtn)
+
         btnReset.setOnClickListener {
-            val email = textEmail.text.toString()
-            if (email.isEmpty())
-                Toast.makeText(this,"Fornisci email", Toast.LENGTH_SHORT).show()
-            else {
-                ResetPassword(auth,email)
+            val email = textEmail.text.toString().trim()
+            if (email.isEmpty()) {
+                Toast.makeText(this, "Please enter your email", Toast.LENGTH_SHORT).show()
+            } else {
+                resetPassword(auth, email)
             }
         }
-
     }
-    fun ResetPassword (auth: FirebaseAuth, mail : String) {
-        auth.sendPasswordResetEmail(mail).addOnCompleteListener{ task ->
+
+    private fun resetPassword(auth: FirebaseAuth, mail: String) {
+        auth.sendPasswordResetEmail(mail).addOnCompleteListener { task ->
             if (task.isSuccessful) {
-                val intetResetOk = Intent(this, Login::class.java)
-                startActivity(intetResetOk)
-            }
-            else {
-                // If sign in fails, display a message to the user.
-                Log.w("login", "Reset:failure", task.exception)
+                Toast.makeText(this, "Reset link sent successfully", Toast.LENGTH_SHORT).show()
+                val intentResetOk = Intent(this, Login::class.java)
+                startActivity(intentResetOk)
+                finish()
+            } else {
+                Log.w("ResetPassword", "Reset email failure", task.exception)
                 Toast.makeText(
                     baseContext,
-                    "Authentication failed. ${task.exception?.message}",
-                    Toast.LENGTH_LONG,
+                    "Error: Invalid or unregistered email",
+                    Toast.LENGTH_SHORT
                 ).show()
             }
         }
     }
-
 }

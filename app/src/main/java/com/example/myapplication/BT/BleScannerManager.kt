@@ -39,7 +39,7 @@ object BleScannerManager {
         val bluetoothAdapter = bluetoothManager.adapter
 
         if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
-            Toast.makeText(context, "Attiva il Bluetooth per cercare i dispositivi", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Please enable Bluetooth to scan", Toast.LENGTH_SHORT).show()
             scanStateListener?.onScanStopped()
             isScanning = false
             return

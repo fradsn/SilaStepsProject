@@ -52,13 +52,13 @@ class SmartRingManager private constructor(
     private val measurementWatchdogRunnable = Runnable {
         if (currentMeasuringType != null) {
             val typeFailed = currentMeasuringType
-            currentMeasuringType = null // Sblocco immediato dell'hardware
-            Log.w("SMART_RING", "Watchdog attivato! Misurazione $typeFailed appesa oltre 60 secondi. Stato resettato forzatamente.")
+            currentMeasuringType = null // Immediate hardware unlock
+            Log.w("SMART_RING", "Watchdog triggered! Measurement $typeFailed timed out after 60 seconds. State forced to reset.")
 
-            // Inviamo una notifica visiva all'utente sul thread principale
+            // Send clear alert message to user on the main UI thread
             mainHandler.post {
-                val msg = if (typeFailed == "PRESSURE") "Misurazione Pressione scaduta. Riprova restando fermo."
-                else "Misurazione Ossigeno scaduta. Riprova restando fermo."
+                val msg = if (typeFailed == "PRESSURE") "Blood Pressure timeout. Please stay still and try again."
+                else "Blood Oxygen timeout. Please stay still and try again."
                 Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
             }
         }
@@ -71,24 +71,24 @@ class SmartRingManager private constructor(
     fun isConnected(): Boolean = connected
     fun getAddress(): String = macAddress
 
-    // Espone all'esterno se l'hardware è impegnato in un task
+    // Exposes whether the hardware is busy with an active task
     fun isMeasuring(): Boolean = currentMeasuringType != null
 
-    // Permette di leggere l'esatta stringa identificativa della misurazione in corso
+    // Allows reading the current active measurement type string
     fun getActiveMeasurementType(): String? = currentMeasuringType
 
     @SuppressLint("MissingPermission")
     fun connect(runtimeContext: Context) {
         val adapter = BluetoothAdapter.getDefaultAdapter()
         if (adapter == null) {
-            listener.onError("Bluetooth non supportato")
+            listener.onError("Bluetooth not supported")
             return
         }
         try {
             val device = adapter.getRemoteDevice(macAddress)
             bluetoothGatt = device.connectGatt(runtimeContext.applicationContext, false, gattCallback)
         } catch (e: Exception) {
-            listener.onError("Errore GATT: ${e.message}")
+            listener.onError("Gatt connection error: ${e.message}")
         }
     }
 
@@ -115,14 +115,14 @@ class SmartRingManager private constructor(
                         try {
                             gatt.requestMtu(512)
                         } catch (e: Exception) {
-                            Log.e("SMART_RING", "Errore MTU: ${e.message}")
+                            Log.e("SMART_RING", "MTU Error: ${e.message}")
                         }
                     }, 300)
                 }
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 connected = false
                 bluetoothGatt = null
-                currentMeasuringType = null // Ripristino dello stato hardware alla disconnessione
+                currentMeasuringType = null // Reset state machine on disconnect
                 mainHandler.post { listener.onDisconnected() }
             }
         }
@@ -152,78 +152,72 @@ class SmartRingManager private constructor(
             Decoder.decode(hex)?.let { decodedResult ->
                 when (decodedResult.type) {
                     "SPO2" -> {
-                        // Successo! Rimuoviamo immediatamente il Watchdog dei 60 secondi
+                        // Success! Remove the 60-second watchdog callback
                         mainHandler.removeCallbacks(measurementWatchdogRunnable)
-                        // IMPLEMENTAZIONE DEL DELAY DI 1 SECONDO
-                        // Mantiene lo stato attivo per 1 secondo dando tempo alla UI di intercettare l'ultimo dato utile salvato
-                        val TypeToReset = currentMeasuringType
-                        if (TypeToReset == "O2" ) {
+
+                        // Maintain the state briefly for 2 seconds so the UI catches the update cleanly
+                        val typeToReset = currentMeasuringType
+                        if (typeToReset == "O2") {
                             mainHandler.postDelayed({
-                                // Verifichiamo che nel frattempo l'utente non abbia avviato un'altra misura differente
-                                if (currentMeasuringType == TypeToReset) {
+                                if (currentMeasuringType == typeToReset) {
                                     currentMeasuringType = null
-                                    Log.d("SMART_RING", "Misurazione SpO2 completata. Stato resettato dopo delay.")
+                                    Log.d("SMART_RING", "SpO2 measurement complete. State reset.")
                                 }
                             }, 2000)
                         }
                     }
                     "BP" -> {
-                        // Successo! Rimuoviamo immediatamente il Watchdog dei 60 secondi
+                        // Success! Remove the 60-second watchdog callback
                         mainHandler.removeCallbacks(measurementWatchdogRunnable)
-                        // IMPLEMENTAZIONE DEL DELAY
-                        val TypeToReset = currentMeasuringType
-                        if (TypeToReset == "PRESSURE" ) {
+
+                        val typeToReset = currentMeasuringType
+                        if (typeToReset == "PRESSURE") {
                             mainHandler.postDelayed({
-                                if (currentMeasuringType == TypeToReset) {
+                                if (currentMeasuringType == typeToReset) {
                                     currentMeasuringType = null
-                                    Log.d("SMART_RING", "Misurazione Pressione completata. Stato resettato dopo delay.")
+                                    Log.d("SMART_RING", "Blood Pressure measurement complete. State reset.")
                                 }
                             }, 2000)
                         }
                     }
                     "CALIBRATION_RESULT" -> {
-                        // Sblocchiamo immediatamente l'hardware poichè l'operazione di calibrazione si è conclusa
+                        // Instantly unlock hardware on completion
                         currentMeasuringType = null
-                        Log.d("SMART_RING", "Ricevuto esito calibrazione hardware. Codice: ${decodedResult.calibrationStatus}")
+                        Log.d("SMART_RING", "Calibration result code: ${decodedResult.calibrationStatus}")
 
-                        // Gestione dei codici di risposta ufficiali descritti nel Decoder (Sezione 3.5.4.4)
                         mainHandler.post {
                             when (decodedResult.calibrationStatus) {
                                 0 -> {
-                                    Log.d("SMART_RING", "Calibrazione della pressione eseguita con successo.")
-                                    android.widget.Toast.makeText(context, "Calibrazione riuscita!", android.widget.Toast.LENGTH_SHORT).show()
+                                    Log.d("SMART_RING", "Calibration completed successfully.")
+                                    Toast.makeText(context, "Calibration successful", Toast.LENGTH_SHORT).show()
                                 }
                                 1 -> {
-                                    Log.e("SMART_RING", "Errore calibrazione: Parametri inviati errati.")
-                                    android.widget.Toast.makeText(context, "Calibrazione fallita: parametri errati.", android.widget.Toast.LENGTH_LONG).show()
+                                    Log.e("SMART_RING", "Calibration error: Invalid parameters.")
+                                    Toast.makeText(context, "Calibration failed: invalid parameters", Toast.LENGTH_SHORT).show()
                                 }
                                 2 -> {
-                                    Log.w("SMART_RING", "Errore calibrazione: Il dispositivo non è in modalità misurazione.")
-                                    android.widget.Toast.makeText(context, "Anello non pronto per la calibrazione.", android.widget.Toast.LENGTH_LONG).show()
+                                    Log.w("SMART_RING", "Calibration error: Device not in matching measurement mode.")
+                                    Toast.makeText(context, "Device not ready for calibration", Toast.LENGTH_SHORT).show()
                                 }
                                 else -> {
-                                    Log.e("SMART_RING", "Errore calibrazione sconosciuto. Codice hardware: ${decodedResult.calibrationStatus}")
-                                    android.widget.Toast.makeText(context, "Errore calibrazione sconosciuto.", android.widget.Toast.LENGTH_SHORT).show()
+                                    Log.e("SMART_RING", "Unknown calibration error code: ${decodedResult.calibrationStatus}")
+                                    Toast.makeText(context, "Unknown calibration error", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }
                     }
                     "MEASUREMENT_FAILED" -> {
-                        //  Rimuoviamo immediatamente il Watchdog dei 60 secondi
                         mainHandler.removeCallbacks(measurementWatchdogRunnable)
-                        // GESTIONE FALLIMENTO: Resetti IMMEDIATAMENTE senza alcun delay.
+                        // Reset immediately on explicit internal failure code without extra delays
                         currentMeasuringType = null
-                        Log.w("SMART_RING", "Misurazione Pressione fallita dall'hardware. Stato sbloccato immediatamente.")
+                        Log.w("SMART_RING", "Measurement failed by hardware. State unlocked immediately.")
                     }
                     "END_ACK" -> {
-                        //  Rimuoviamo immediatamente il Watchdog dei 60 secondi
                         mainHandler.removeCallbacks(measurementWatchdogRunnable)
                         mainHandler.postDelayed({
-                            // Se l'anello invia un ACK di chiusura sessione esplicito, puliamo lo stato.
                             currentMeasuringType = null
-                            Log.d("SMART_RING", "Ricevuto END_ACK hardware. Stato resettato.")
+                            Log.d("SMART_RING", "END_ACK received. State cleared.")
                         }, 2000)
-
                     }
                 }
                 mainHandler.post { listener.onDataReceived(decodedResult) }
@@ -232,7 +226,7 @@ class SmartRingManager private constructor(
 
         override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
             super.onDescriptorWrite(gatt, descriptor, status)
-            Log.d("SMART_RING", "Descrittore scritto con stato: $status")
+            Log.d("SMART_RING", "Descriptor written with status: $status")
         }
     }
 
@@ -240,7 +234,7 @@ class SmartRingManager private constructor(
     private fun enableNotifications(gatt: BluetoothGatt) {
         val service = gatt.getService(PacketManager.SERVICE_UUID)
         if (service == null) {
-            Log.e("SMART_RING", "Servizio UUID non trovato sull'hardware!")
+            Log.e("SMART_RING", "Service UUID not found on hardware!")
             return
         }
 
@@ -266,10 +260,10 @@ class SmartRingManager private constructor(
                     desc.value = BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
                     gatt.writeDescriptor(desc)
                 }
-                Log.d("SMART_RING", "Notifiche registrate con successo per: ${char.uuid}")
+                Log.d("SMART_RING", "Notifications registered for: ${char.uuid}")
             }
         } catch (e: Exception) {
-            Log.e("SMART_RING", "Errore critico durante setIndicate: ${e.message}")
+            Log.e("SMART_RING", "Critical error during setIndicate: ${e.message}")
         }
     }
 
@@ -294,7 +288,7 @@ class SmartRingManager private constructor(
                     gatt.writeCharacteristic(char)
                 }
             } catch (e: Exception) {
-                Log.e("SMART_RING", "Errore durante l'invio del pacchetto: ${e.message}")
+                Log.e("SMART_RING", "Error writing characteristic packet: ${e.message}")
             }
         }
     }
@@ -308,7 +302,7 @@ class SmartRingManager private constructor(
             val payload = byteArrayOf(systolic.toByte(), diastolic.toByte())
             sendCommand(0x03.toByte(), 0x03.toByte(), payload)
         } else {
-            listener.onError("Valori non validi (Sistolica: 60-250, Diastolica: 40-150)")
+            listener.onError("Invalid inputs (Systolic: 60-250, Diastolic: 40-150)")
         }
     }
 
@@ -319,7 +313,6 @@ class SmartRingManager private constructor(
 
     fun startHeartRateMeasurement() {
         currentMeasuringType = "BPM"
-        //Rimuoviamo immediatamente il Watchdog dei 60 secondi
         mainHandler.removeCallbacks(measurementWatchdogRunnable)
         sendCommand(0x03.toByte(), 0x0C.toByte(), byteArrayOf(0x01, 0x01))
         mainHandler.postDelayed({
@@ -329,7 +322,6 @@ class SmartRingManager private constructor(
 
     fun startSpO2Measurement() {
         currentMeasuringType = "O2"
-        // Fissiamo il Watchdog preventivo a 60 secondi
         mainHandler.removeCallbacks(measurementWatchdogRunnable)
         mainHandler.postDelayed(measurementWatchdogRunnable, 60000)
         sendCommand(0x03.toByte(), 0x0C.toByte(), byteArrayOf(0x01, 0x01))
@@ -340,7 +332,6 @@ class SmartRingManager private constructor(
 
     fun startBloodPressureMeasurement() {
         currentMeasuringType = "PRESSURE"
-        // Fissiamo il Watchdog preventivo a 60 secondi
         mainHandler.removeCallbacks(measurementWatchdogRunnable)
         mainHandler.postDelayed(measurementWatchdogRunnable, 60000)
         sendCommand(0x03.toByte(), 0x0C.toByte(), byteArrayOf(0x01, 0x01))
@@ -350,8 +341,8 @@ class SmartRingManager private constructor(
     }
 
     fun stopAllMeasurements() {
-        mainHandler.removeCallbacks(measurementWatchdogRunnable) // Cancella immediatamente il timer
-        currentMeasuringType = null // Reset istantaneo immediato se forzato a mano
+        mainHandler.removeCallbacks(measurementWatchdogRunnable)
+        currentMeasuringType = null
         sendCommand(0x03.toByte(), 0x09.toByte(), byteArrayOf(0x00, 0x01, 0x01))
         mainHandler.postDelayed({
             sendCommand(0x03.toByte(), 0x0C.toByte(), byteArrayOf(0x00, 0x01))

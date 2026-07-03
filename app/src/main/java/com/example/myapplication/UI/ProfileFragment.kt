@@ -52,7 +52,7 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
     private val auth = FirebaseAuth.getInstance()
     private var deviceAdapter: DeviceAdapter? = null
 
-    // Riferimenti per le opzioni avanzate hardware
+    // Hardware configurations components
     private lateinit var spinnerBpmDuration: Spinner
     private lateinit var btnCalibrateBPProfile: MaterialButton
     private var ringManager: SmartRingManager? = null
@@ -60,7 +60,7 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
     private val pollHandler = Handler(Looper.getMainLooper())
     private val pollRunnable = object : Runnable {
         override fun run() {
-            rinfrescaDatiInRealtime()
+            refreshRealtimeData()
             pollHandler.postDelayed(this, 2000)
         }
     }
@@ -76,7 +76,7 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
         if (scanGranted && connectGranted && locationGranted) {
             showDevicePickerSheet()
         } else {
-            Toast.makeText(context, "Bluetooth and location permissions are required to scan for devices", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Bluetooth and location permissions required", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -99,11 +99,11 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         val sheetView = inflater.inflate(R.layout.fragment_profile, container, false)
-        aggiornaUI(sheetView)
+        updateUI(sheetView)
         return sheetView
     }
 
-    private fun aggiornaUI(sheetView: View) {
+    private fun updateUI(sheetView: View) {
         val userId = auth.currentUser?.uid ?: "user"
         val sharedPref = sheetView.context.getSharedPreferences("UserData_$userId", Context.MODE_PRIVATE)
         val savedName = sharedPref.getString("name", "Welcome")
@@ -125,7 +125,7 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
         super.onViewCreated(view, savedInstanceState)
 
         parentFragmentManager.setFragmentResultListener("refresh_profile", this) { _, _ ->
-            aggiornaUI(view)
+            updateUI(view)
         }
 
         MotionSessionManager.initialize(requireContext())
@@ -168,7 +168,7 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
                 SmartRingManager.getActiveInstance()?.requestBatteryLevel()
                 showConnectedDeviceBottomSheet()
             } else {
-                Toast.makeText(context, "No hardware devices currently paired", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "No devices paired", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -184,7 +184,7 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
             requireActivity().finish()
         }
 
-        // Inizializzazione della nuova sezione hardware avanzata
+        // Initialize advanced hardware custom options
         setupAdvancedSettings(view)
     }
 
@@ -194,7 +194,6 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
 
         val sharedPref = requireContext().getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
 
-        // Opzioni dello Spinner mappate in millisecondi (3 min e 20 secondi = 200.000 ms come valore di fabbrica)
         val options = arrayOf("1 Minute", "2 Minutes", "3 Minutes 20s (Default)", "5 Minutes")
         val valuesInMs = arrayOf(1 * 60 * 1000L, 2 * 60 * 1000L, 200 * 1000L, 5 * 60 * 1000L)
 
@@ -203,7 +202,6 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
         }
         spinnerBpmDuration.adapter = adapter
 
-        // Recupera l'intervallo precedentemente salvato
         val savedDurationMs = sharedPref.getLong("auto_bpm_window_ms", 200 * 1000L)
         val defaultIndex = valuesInMs.indexOf(savedDurationMs).let { if (it == -1) 2 else it }
         spinnerBpmDuration.setSelection(defaultIndex)
@@ -215,36 +213,31 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
 
                 if (selectedMs != currentSavedMs) {
                     sharedPref.edit().putLong("auto_bpm_window_ms", selectedMs).apply()
-                    Toast.makeText(context, "Loop interval updated. Will apply to next cycle.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Interval updated for next cycle", Toast.LENGTH_SHORT).show()
                 }
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
-        // Logica pulsante di calibrazione della pressione con controllo di sicurezza hardware integrato
         btnCalibrateBPProfile.setOnClickListener {
             ringManager = SmartRingManager.Companion.getActiveInstance()
 
-            // 1. Verifica preliminare della connessione Bluetooth
             if (ringManager?.isConnected() == false || ringManager == null) {
                 Toast.makeText(context, "Smart ring not connected", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
-            // 2. Controllo se la modalità Automatica in background è attiva
             if (HealthMonitoringService.isAutoMeasuringActive) {
-                Toast.makeText(context, "Cannot calibrate: Automatic monitoring is currently running. Disable it first.", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Cannot calibrate: Auto-monitoring active", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
-            // 3. Controllo se l'anello sta eseguendo un'altra misurazione manuale incompatibile (BPM o SpO2)
             val activeType = ringManager?.getActiveMeasurementType()
             if (ringManager?.isMeasuring() == true && activeType != "PRESSURE") {
-                Toast.makeText(context, "Cannot calibrate: Smart Ring is busy measuring $activeType. Stop current activity first.", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Cannot calibrate: Device busy", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
-            // Se supera tutti i filtri di sicurezza, mostra il dialog
             showBpCalibrationDialog()
         }
     }
@@ -288,7 +281,7 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
                 val diastolic = diaStr.toIntOrNull() ?: 0
                 ringManager?.sendBloodPressureCalibration(systolic, diastolic)
             } else {
-                Toast.makeText(context, "Please fill in both fields to proceed", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Fill in both fields", Toast.LENGTH_SHORT).show()
             }
             dialog.dismiss()
         }
@@ -392,7 +385,7 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
                 } else {
                     context?.startService(serviceIntent)
                 }
-                Toast.makeText(requireContext(), "Initializing hardware connection via Service...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), "Connecting to Smart Ring...", Toast.LENGTH_SHORT).show()
             }
             dialog.dismiss()
         }
@@ -432,7 +425,7 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
         sheet.show(parentFragmentManager, "UserInfoBottomSheet")
     }
 
-    private fun rinfrescaDatiInRealtime() {
+    private fun refreshRealtimeData() {
         if (!isAdded) return
         if (tvBatteryLevelInSheet != null) {
             val sharedPref = requireContext().getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
