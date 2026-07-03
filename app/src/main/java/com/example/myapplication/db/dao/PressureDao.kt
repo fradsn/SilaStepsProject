@@ -4,21 +4,28 @@ import android.content.ContentValues
 import android.content.Context
 import com.example.myapplication.db.SQLiteHelper
 import com.example.myapplication.db.models.PressureEntry
+import com.google.firebase.auth.FirebaseAuth
 
-class PressureDao(context: Context) {
+class PressureDao(private val context: Context) {
 
-    private val db = SQLiteHelper.getInstance(context).writableDatabase
+    private fun getHelper(): SQLiteHelper {
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: "default_user"
+        return SQLiteHelper(context, currentUid)
+    }
 
     fun insert(systolic: Int, diastolic: Int) {
+        val db = getHelper().writableDatabase
         val values = ContentValues().apply {
             put("timestamp", System.currentTimeMillis())
             put("systolic", systolic)
             put("diastolic", diastolic)
         }
         db.insert("pressure", null, values)
+        db.close()
     }
 
     fun getAll(): List<PressureEntry> {
+        val db = getHelper().readableDatabase
         val cursor = db.rawQuery("SELECT * FROM pressure ORDER BY timestamp ASC", null)
         val list = mutableListOf<PressureEntry>()
 
@@ -34,11 +41,13 @@ class PressureDao(context: Context) {
                 )
             }
         }
+        db.close()
         return list
     }
 
     fun deleteOlderThan(timestamp: Long) {
+        val db = getHelper().writableDatabase
         db.delete("pressure", "timestamp < ?", arrayOf(timestamp.toString()))
+        db.close()
     }
-
 }

@@ -4,25 +4,28 @@ import android.content.ContentValues
 import android.content.Context
 import com.example.myapplication.db.SQLiteHelper
 import com.example.myapplication.db.models.BpmEntry
+import com.google.firebase.auth.FirebaseAuth
 
-class BpmDao(context: Context) {
+class BpmDao(private val context: Context) {
 
-    private val db = SQLiteHelper.getInstance(context).writableDatabase
+    // Ottiene il database helper dinamico basato sull'utente loggato
+    private fun getHelper(): SQLiteHelper {
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: "default_user"
+        return SQLiteHelper(context, currentUid)
+    }
 
     fun insert(bpm: Int) {
+        val db = getHelper().writableDatabase
         val values = ContentValues().apply {
             put("timestamp", System.currentTimeMillis())
             put("bpm", bpm)
         }
         db.insert("bpm", null, values)
+        db.close()
     }
 
     fun getAll(): List<BpmEntry> {
-        /*
-        val ventiquattroOreFa = System.currentTimeMillis() - 86400000L
-        val query = "SELECT * FROM bpm WHERE timestamp >= ? ORDER BY timestamp ASC"
-        val cursor = db.rawQuery(query, arrayOf(ventiquattroOreFa.toString()))
-         */
+        val db = getHelper().readableDatabase
         val cursor = db.rawQuery("SELECT * FROM bpm ORDER BY timestamp ASC", null)
         val list = mutableListOf<BpmEntry>()
 
@@ -37,11 +40,13 @@ class BpmDao(context: Context) {
                 )
             }
         }
+        db.close()
         return list
     }
 
     fun deleteOlderThan(timestamp: Long) {
+        val db = getHelper().writableDatabase
         db.delete("bpm", "timestamp < ?", arrayOf(timestamp.toString()))
+        db.close()
     }
-
 }

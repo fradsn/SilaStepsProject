@@ -9,6 +9,7 @@ import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.example.myapplication.R
+import com.example.myapplication.services.GestoreStatistiche
 import com.google.firebase.auth.FirebaseAuth
 
 class RegisterActivity : AppCompatActivity() {
@@ -47,10 +48,13 @@ class RegisterActivity : AppCompatActivity() {
                         // Invia l'email di verifica in background
                         auth.currentUser?.sendEmailVerification()
 
+                        // INIZIALIZZA IL DATABASE PER IL NUOVO UTENTE APPENA CREATO
+                        GestoreStatistiche.resetInstance()
+
                         Toast.makeText(this, "Registration successful!", Toast.LENGTH_SHORT).show()
 
-                        // SWITCH IMMEDIATO ALLA VIEW DI LOGIN
-                        val intent = Intent(this, Login::class.java)
+                        // ACCESSO DIRETTO ALLA HOME PAGE DALLA REGISTRAZIONE
+                        val intent = Intent(this, UserProfileActivity::class.java)
                         startActivity(intent)
                         finish() // Chiude RegisterActivity in modo pulito
                     } else {

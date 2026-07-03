@@ -34,11 +34,10 @@ import com.google.android.material.switchmaterial.SwitchMaterial
 
 class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSessionManager.Observer {
 
-    companion object {
-        var lastBpm: String = "--"
-        var lastSpO2: String = "-- %"
-        var lastBP: String = "-- / --"
-    }
+    // Trasformati in variabili d'istanza dinamiche per evitare la cache statica tra utenti differenti
+    private var lastBpm: String = "--"
+    private var lastSpO2: String = "-- %"
+    private var lastBP: String = "-- / --"
 
     private lateinit var gestoreStatistiche: GestoreStatistiche
 
@@ -149,6 +148,7 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
 
         ringManager = SmartRingManager.Companion.getActiveInstance()
 
+        // Assegnazione dinamica iniziale all'avvio della schermata
         tvBpmValue.text = lastBpm
         tvSpO2Value.text = lastSpO2
         tvBpValue.text = lastBP
@@ -501,21 +501,27 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
             val listaBpm = gestoreStatistiche.getBpm()
             if (listaBpm.isNotEmpty()) {
                 lastBpm = listaBpm.last().bpm.toString()
-                tvBpmValue.text = lastBpm
+            } else {
+                lastBpm = "--"
             }
+            tvBpmValue.text = lastBpm
 
             val listaO2 = gestoreStatistiche.getO2()
             if (listaO2.isNotEmpty()) {
                 lastSpO2 = "${listaO2.last().value} %"
-                tvSpO2Value.text = lastSpO2
+            } else {
+                lastSpO2 = "-- %"
             }
+            tvSpO2Value.text = lastSpO2
 
             val listaPressioni = gestoreStatistiche.getPressioni()
             if (listaPressioni.isNotEmpty()) {
                 val uP = listaPressioni.last()
                 lastBP = "${uP.systolic} / ${uP.diastolic}"
-                tvBpValue.text = lastBP
+            } else {
+                lastBP = "-- / --"
             }
+            tvBpValue.text = lastBP
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -525,6 +531,8 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
         super.onResume()
         MotionSessionManager.addObserver(this)
         renderMotionState(MotionSessionManager.getState())
+
+        // Forza la rilettura immediata dal database isolato dell'utente corrente
         refreshUiFromDatabase()
 
         val activeInstance = SmartRingManager.Companion.getActiveInstance()

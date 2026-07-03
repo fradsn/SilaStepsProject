@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import com.example.myapplication.R
+import com.example.myapplication.services.GestoreStatistiche
 import com.google.firebase.auth.FirebaseAuth
 
 class Login : AppCompatActivity() {
@@ -48,6 +49,10 @@ class Login : AppCompatActivity() {
                 .addOnCompleteListener(this) { task ->
                     if (task.isSuccessful) {
                         Log.d("Login", "Authentication successful")
+
+                        // FORZA IL RE-INDIRIZZAMENTO DEL DATABASE LOCALE SUL NUOVO UTENTE LOGGATO
+                        GestoreStatistiche.resetInstance()
+
                         val intentLogin = Intent(this, UserProfileActivity::class.java)
                         startActivity(intentLogin)
                         finish()
@@ -75,6 +80,9 @@ class Login : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         if (auth.currentUser != null){
+            // SE L'UTENTE È GIÀ LOGGATO IN CASH, PREPARIAMO IL SUO DATABASE DEDICATO PRIMA DI ENTRARE
+            GestoreStatistiche.resetInstance()
+
             val intentLogin = Intent(this, UserProfileActivity::class.java)
             startActivity(intentLogin)
             finish()

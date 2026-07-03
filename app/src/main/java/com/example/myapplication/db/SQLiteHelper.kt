@@ -4,19 +4,9 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class SQLiteHelper private constructor(context: Context) :
-    SQLiteOpenHelper(context, "statistiche.db", null, 1) {
-
-    companion object {
-        @Volatile
-        private var INSTANCE: SQLiteHelper? = null
-
-        fun getInstance(context: Context): SQLiteHelper {
-            return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: SQLiteHelper(context.applicationContext).also { INSTANCE = it }
-            }
-        }
-    }
+// Il costruttore ora accetta il contesto e il flag userId dinamico per isolare i file fisici
+class SQLiteHelper(context: Context, userId: String) :
+    SQLiteOpenHelper(context, "statistiche_$userId.db", null, 1) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -52,6 +42,9 @@ class SQLiteHelper private constructor(context: Context) :
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Se un giorno vuoi aggiornare le tabelle
+        db.execSQL("DROP TABLE IF EXISTS bpm")
+        db.execSQL("DROP TABLE IF EXISTS pressure")
+        db.execSQL("DROP TABLE IF EXISTS o2")
+        onCreate(db)
     }
 }
