@@ -38,7 +38,7 @@ class UserInfoBottomSheet : BottomSheetDialogFragment() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Launcher moderno per aprire la galleria
+        // Photo picker launcher for gallery access
         pickImageLauncher = registerForActivityResult(
             ActivityResultContracts.PickVisualMedia()
         ) { uri ->
@@ -49,7 +49,6 @@ class UserInfoBottomSheet : BottomSheetDialogFragment() {
                 imgPreview?.clearColorFilter()
             }
         }
-
     }
 
     override fun onCreateView(
@@ -59,7 +58,7 @@ class UserInfoBottomSheet : BottomSheetDialogFragment() {
     ): View? {
         val view = inflater.inflate(R.layout.dialog_user_info, container, false)
 
-        // Collegamento view
+        // Bind views
         imgPreview = view.findViewById(R.id.imgProfilePreview)
         btnPickImage = view.findViewById(R.id.btnPickImage)
         btnDeleteImage = view.findViewById(R.id.btnDeleteImage)
@@ -77,7 +76,7 @@ class UserInfoBottomSheet : BottomSheetDialogFragment() {
     }
 
     private fun setupUI() {
-        val genderOptions = arrayOf("Maschio", "Femmina", "Altro")
+        val genderOptions = arrayOf("Male", "Female", "Other")
         val spinnerAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, genderOptions)
         spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         spinnerGender?.adapter = spinnerAdapter
@@ -86,7 +85,7 @@ class UserInfoBottomSheet : BottomSheetDialogFragment() {
         val userId = auth.currentUser?.uid ?: "user"
         val sharedPref = requireContext().getSharedPreferences("UserData_$userId", Context.MODE_PRIVATE)
 
-        // Carica dati salvati
+        // Load saved profile fields
         val savedGenderPos = sharedPref.getInt("gender_pos", 0)
         val savedAge = sharedPref.getString("age", "")
         val savedHeight = sharedPref.getString("height", "")
@@ -112,7 +111,6 @@ class UserInfoBottomSheet : BottomSheetDialogFragment() {
             imgPreview?.setImageURI(savedImageUri.toUri())
         }
 
-        // Apertura galleria
         btnPickImage?.setOnClickListener {
             modImage = true
             pickImageLauncher.launch(
@@ -133,7 +131,6 @@ class UserInfoBottomSheet : BottomSheetDialogFragment() {
 
         btnDeleteImage?.isEnabled = selectedImageUri != null
 
-        // Salvataggio dati
         btnSaveInfo?.setOnClickListener {
             saveUserInfo(sharedPref)
         }
@@ -166,8 +163,9 @@ class UserInfoBottomSheet : BottomSheetDialogFragment() {
         val surnameStr = editSurname?.text.toString().trim()
         val genderPos = spinnerGender?.selectedItemPosition ?: 0
 
+        // Validation rule for baseline metrics required by Smart Ring and Shimmer
         if (ageStr.isEmpty() || heightStr.isEmpty() || weightStr.isEmpty()) {
-            Toast.makeText(requireContext(), "Compila obbligatoriamente Età, Altezza e Peso", Toast.LENGTH_LONG).show()
+            Toast.makeText(requireContext(), "Please fill in mandatory fields (Age, Height, Weight)", Toast.LENGTH_LONG).show()
             return
         }
 
@@ -184,18 +182,18 @@ class UserInfoBottomSheet : BottomSheetDialogFragment() {
             } else {
                 putString("profile_image_uri", selectedImageUri.toString())
             }
-
             apply()
         }
 
+        // Notify smart ring stack about changes
         SmartRingManager.getActiveInstance()?.syncUserInfo()
 
-        // Notifica il Fragment padre
-        if (modImage){
+        // Sync visual banner headers inside ProfileFragment
+        if (modImage || nameStr.isNotEmpty()) {
             parentFragmentManager.setFragmentResult("refresh_profile", Bundle())
         }
 
-        Toast.makeText(requireContext(), "Informazioni salvate!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(requireContext(), "Profile updated successfully", Toast.LENGTH_SHORT).show()
         dismiss()
     }
 }

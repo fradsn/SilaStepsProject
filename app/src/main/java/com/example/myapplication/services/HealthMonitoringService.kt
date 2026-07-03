@@ -184,7 +184,7 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener {
             "BATTERY" -> {
                 if (result.battery >= 0) {
                     val chargingIcon = if (result.chargingStatus == 0x02) "⚡ " else ""
-                    val batteryText = "Batteria: $chargingIcon${result.battery}%"
+                    val batteryText = "Battery: $chargingIcon${result.battery}%"
 
                     val sharedPref = getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
                     sharedPref.edit().putString("last_battery_level", batteryText).apply()
@@ -206,7 +206,7 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener {
     override fun onDisconnected() {
         Log.d(TAG, "Smart Ring disconnesso dal Servizio")
         val sharedPref = getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
-        sharedPref.edit().putString("last_battery_level", "Batteria: --").apply()
+        sharedPref.edit().putString("last_battery_level", "Battery: --").apply()
 
         autoMeasureHandler.removeCallbacksAndMessages(null)
     }
