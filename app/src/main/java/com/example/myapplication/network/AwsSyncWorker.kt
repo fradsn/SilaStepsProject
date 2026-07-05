@@ -41,7 +41,7 @@ class AwsSyncWorker(
         }
         val firebaseUserId = currentUser.uid
 
-        // 2. Inizializza SQLiteHelper passando il contesto e il firebaseUserId
+        // 2. Inizializza SQLiteHelper passando il contesto e il firebaseUserId per aprire il DB specifico
         val dbHelper = SQLiteHelper(applicationContext, firebaseUserId)
         val recordsToSend = fetchAndPrepareRecords(dbHelper, firebaseUserId)
 
@@ -64,7 +64,7 @@ class AwsSyncWorker(
             if (response.isSuccessful) {
                 Log.d(TAG, "Sincronizzazione completata con successo! ${recordsToSend.size} record inviati.")
 
-                // 4. MOSTRA IL TOAST SULL'UI THREAD IN CASO DI SUCCESSO (Tradotto in inglese)
+                // 4. Mostra il Toast di successo in lingua inglese sull'UI Thread
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         applicationContext,
@@ -92,13 +92,42 @@ class AwsSyncWorker(
         }
 
         val database = dbHelper.readableDatabase
-        val cursor = database.rawQuery("SELECT * FROM bpm ORDER BY timestamp DESC LIMIT 10", null)
 
-        if (cursor.moveToFirst()) {
+        // 1. Estraiamo le ultime 10 misurazioni di BPM (linea temporale principale)
+        val bpmCursor = database.rawQuery("SELECT * FROM bpm ORDER BY timestamp DESC LIMIT 10", null)
+
+        if (bpmCursor.moveToFirst()) {
             do {
-                val timestampMillis = cursor.getLong(cursor.getColumnIndexOrThrow("timestamp"))
-                val bpm = cursor.getInt(cursor.getColumnIndexOrThrow("bpm"))
+                val timestampMillis = bpmCursor.getLong(bpmCursor.getColumnIndexOrThrow("timestamp"))
+                val bpm = bpmCursor.getInt(bpmCursor.getColumnIndexOrThrow("bpm"))
 
+                // 2. Cerchiamo la misurazione di SpO2 (Tabella o2) più vicina a questo timestamp
+                var realSpo2 = 98 // Fallback
+                val o2Cursor = database.rawQuery(
+                    "SELECT value FROM o2 ORDER BY ABS(timestamp - ?) ASC LIMIT 1",
+                    arrayOf(timestampMillis.toString())
+                )
+                if (o2Cursor.moveToFirst()) {
+                    realSpo2 = o2Cursor.getInt(o2Cursor.getColumnIndexOrThrow("value"))
+                }
+                o2Cursor.close()
+
+                // 3. Cerchiamo la misurazione di Pressione (Tabella pressure) più vicina a questo timestamp
+                var realPressure = "120/80" // Fallback
+                val pressureCursor = database.rawQuery(
+                    "SELECT systolic, diastolic FROM pressure ORDER BY ABS(timestamp - ?) ASC LIMIT 1",
+                    arrayOf(timestampMillis.toString())
+                )
+                if (pressureCursor.moveToFirst()) {
+                    val sys = pressureCursor.getInt(pressureCursor.getColumnIndexOrThrow("systolic"))
+                    val dia = pressureCursor.getInt(pressureCursor.getColumnIndexOrThrow("diastolic"))
+                    realPressure = "$sys/$dia"
+                }
+                pressureCursor.close()
+
+                // 4. Creazione del record:
+                // - Dati reali presi dal DB dell'anello: heartRate, spo2, bloodPressure, timestamp
+                // - Dati fittizi per lo Shimmer (attività volatile): x, y, z, activity
                 val record = AwsRecord(
                     userId = uId,
                     x = 0.05,
@@ -106,14 +135,14 @@ class AwsSyncWorker(
                     z = 9.65,
                     activity = "sitting",
                     heartRate = bpm,
-                    spo2 = 98,
-                    bloodPressure = "120/80",
+                    spo2 = realSpo2,
+                    bloodPressure = realPressure,
                     timestamp = isoFormat.format(Date(timestampMillis))
                 )
                 list.add(record)
-            } while (cursor.moveToNext())
+            } while (bpmCursor.moveToNext())
         }
-        cursor.close()
+        bpmCursor.close()
 
         return list
     }

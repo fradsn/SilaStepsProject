@@ -5,7 +5,6 @@ import android.icu.util.Calendar
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.myapplication.workers.AwsSyncWorker
@@ -16,11 +15,11 @@ class MyApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        setupAwsSyncWorkers()
+        setupAwsSyncWorker()
         scheduleDailyCleanup()
     }
 
-    private fun setupAwsSyncWorkers() {
+    private fun setupAwsSyncWorker() {
         val workManager = WorkManager.getInstance(this)
 
         // Vincoli: esegui solo se il telefono ha una connessione internet attiva
@@ -29,17 +28,7 @@ class MyApplication : Application() {
             .build()
 
         // -------------------------------------------------------------
-        // 1. INVIO IMMEDIATO ALL'AVVIO (One-Time Work Request)
-        // -------------------------------------------------------------
-        val immediateSyncRequest = OneTimeWorkRequestBuilder<AwsSyncWorker>()
-            .setConstraints(constraints)
-            .build()
-
-        // Manda in esecuzione il worker immediatamente all'apertura dell'app
-        workManager.enqueue(immediateSyncRequest)
-
-        // -------------------------------------------------------------
-        // 2. INVIO PERIODICO OGNI 15 MINUTI (Periodic Work Request)
+        // INVIO PERIODICO OGNI 15 MINUTI (Periodic Work Request)
         // -------------------------------------------------------------
         val periodicSyncRequest = PeriodicWorkRequestBuilder<AwsSyncWorker>(15, TimeUnit.MINUTES)
             .setConstraints(constraints)
@@ -48,7 +37,7 @@ class MyApplication : Application() {
         // Registra il lavoro in modo univoco (così non si duplica a ogni avvio dell'app)
         workManager.enqueueUniquePeriodicWork(
             "AwsDatabaseSync",
-            ExistingPeriodicWorkPolicy.KEEP, // Mantiene il vecchio se esiste già
+            ExistingPeriodicWorkPolicy.KEEP, // Mantiene il vecchio se esiste già, evitando di resettare il timer all'avvio
             periodicSyncRequest
         )
     }
