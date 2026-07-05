@@ -75,11 +75,11 @@ class AwsSyncWorker(
 
                 Result.success()
             } else {
-                Log.e(TAG, "Errore API Gateway AWS: ${response.code()} - ${response.errorBody()?.string()}")
+                Log.e(TAG, "Error API Gateway AWS: ${response.code()} - ${response.errorBody()?.string()}")
                 Result.retry()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Errore di rete durante la sincronizzazione", e)
+            Log.e(TAG, "Network error during synchronization", e)
             Result.retry()
         }
     }
@@ -87,14 +87,22 @@ class AwsSyncWorker(
     private fun fetchAndPrepareRecords(dbHelper: SQLiteHelper, uId: String): List<AwsRecord> {
         val list = mutableListOf<AwsRecord>()
 
+        // Formattatore ISO 8601 UTC richiesto da AWS DynamoDB
         val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault()).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }
 
         val database = dbHelper.readableDatabase
 
-        // 1. Estraiamo le ultime 10 misurazioni di BPM (linea temporale principale)
-        val bpmCursor = database.rawQuery("SELECT * FROM bpm ORDER BY timestamp DESC LIMIT 10", null)
+        // Calcoliamo il timestamp di 15 minuti fa in millisecondi
+        val currentTimeMillis = System.currentTimeMillis()
+        val fifteenMinutesAgoMillis = currentTimeMillis - (15 * 60 * 1000)
+
+        // 1. Estraiamo TUTTI i BPM registrati negli ultimi 15 minuti (rimosso il LIMIT 10)
+        val bpmCursor = database.rawQuery(
+            "SELECT * FROM bpm WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC",
+            arrayOf(fifteenMinutesAgoMillis.toString(), currentTimeMillis.toString())
+        )
 
         if (bpmCursor.moveToFirst()) {
             do {
@@ -125,9 +133,7 @@ class AwsSyncWorker(
                 }
                 pressureCursor.close()
 
-                // 4. Creazione del record:
-                // - Dati reali presi dal DB dell'anello: heartRate, spo2, bloodPressure, timestamp
-                // - Dati fittizi per lo Shimmer (attività volatile): x, y, z, activity
+                // 4. Creazione del record combinando i dati reali dell'anello con quelli mockup dello Shimmer
                 val record = AwsRecord(
                     userId = uId,
                     x = 0.05,
