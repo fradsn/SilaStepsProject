@@ -1,6 +1,7 @@
 package com.example.myapplication.workers
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
 import android.widget.Toast
 import androidx.work.CoroutineWorker
@@ -28,29 +29,33 @@ class AwsSyncWorker(
         private const val TAG = "AwsSyncWorker"
         private const val BASE_URL = "https://4m4fvs5pn0.execute-api.eu-north-1.amazonaws.com/"
         private const val API_KEY = "rwT6tGGmplSObjaoVdhb4XN0N0rE1x68k6rLFid9"
+
+        private const val PREFS_NAME = "AwsSyncPrefs"
+        private const val KEY_LAST_SYNC_TIMESTAMP = "last_sync_timestamp"
     }
 
     override suspend fun doWork(): Result {
-        Log.d(TAG, "Inizio sincronizzazione dati verso AWS...")
+        Log.d(TAG, "Starting data synchronization to AWS...")
 
-        // 1. Recupera l'utente corrente da Firebase Auth
         val currentUser = FirebaseAuth.getInstance().currentUser
         if (currentUser == null) {
-            Log.w(TAG, "Utente non loggato su Firebase. Sincronizzazione rimandata.")
+            Log.w(TAG, "User not logged in Firebase. Sync postponed.")
             return Result.retry()
         }
         val firebaseUserId = currentUser.uid
 
-        // 2. Inizializza SQLiteHelper passando il contesto e il firebaseUserId per aprire il DB specifico
+        val sharedPrefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val lastSyncTimestamp = sharedPrefs.getLong(KEY_LAST_SYNC_TIMESTAMP, 0L)
+
         val dbHelper = SQLiteHelper(applicationContext, firebaseUserId)
-        val recordsToSend = fetchAndPrepareRecords(dbHelper, firebaseUserId)
+
+        val (recordsToSend, maxTimestampInBatch) = fetchNewRecordsStrict(dbHelper, firebaseUserId, lastSyncTimestamp)
 
         if (recordsToSend.isEmpty()) {
-            Log.d(TAG, "Nessun nuovo dato locale da sincronizzare.")
+            Log.d(TAG, "No new measurements found in any table since last sync. Skipping network call.")
             return Result.success()
         }
 
-        // 3. Inizializza Retrofit ed esegui la chiamata
         val retrofit = Retrofit.Builder()
             .baseUrl(BASE_URL)
             .addConverterFactory(GsonConverterFactory.create())
@@ -62,9 +67,10 @@ class AwsSyncWorker(
         return try {
             val response = apiService.uploadRecords(apiKey = API_KEY, payload = payload)
             if (response.isSuccessful) {
-                Log.d(TAG, "Sincronizzazione completata con successo! ${recordsToSend.size} record inviati.")
+                Log.d(TAG, "Sync successful! ${recordsToSend.size} records uploaded.")
 
-                // 4. Mostra il Toast di successo in lingua inglese sull'UI Thread
+                sharedPrefs.edit().putLong(KEY_LAST_SYNC_TIMESTAMP, maxTimestampInBatch).apply()
+
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         applicationContext,
@@ -75,7 +81,7 @@ class AwsSyncWorker(
 
                 Result.success()
             } else {
-                Log.e(TAG, "Error API Gateway AWS: ${response.code()} - ${response.errorBody()?.string()}")
+                Log.e(TAG, "AWS Gateway Error: ${response.code()} - ${response.errorBody()?.string()}")
                 Result.retry()
             }
         } catch (e: Exception) {
@@ -84,72 +90,78 @@ class AwsSyncWorker(
         }
     }
 
-    private fun fetchAndPrepareRecords(dbHelper: SQLiteHelper, uId: String): List<AwsRecord> {
+    private fun fetchNewRecordsStrict(dbHelper: SQLiteHelper, uId: String, lastTimestamp: Long): Pair<List<AwsRecord>, Long> {
         val list = mutableListOf<AwsRecord>()
+        val database = dbHelper.readableDatabase
 
-        // Formattatore ISO 8601 UTC richiesto da AWS DynamoDB
+        // Raccogliamo tutti i timestamp unici in cui è stata effettuata ALMENO una misurazione
+        val uniqueTimestamps = mutableSetOf<Long>()
+
+        // 1. Prendi i timestamp da 'bpm'
+        val cursorBpm = database.rawQuery("SELECT timestamp FROM bpm WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
+        while (cursorBpm.moveToNext()) { uniqueTimestamps.add(cursorBpm.getLong(0)) }
+        cursorBpm.close()
+
+        // 2. Prendi i timestamp da 'o2'
+        val cursorO2 = database.rawQuery("SELECT timestamp FROM o2 WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
+        while (cursorO2.moveToNext()) { uniqueTimestamps.add(cursorO2.getLong(0)) }
+        cursorO2.close()
+
+        // 3. Prendi i timestamp da 'pressure'
+        val cursorPressure = database.rawQuery("SELECT timestamp FROM pressure WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
+        while (cursorPressure.moveToNext()) { uniqueTimestamps.add(cursorPressure.getLong(0)) }
+        cursorPressure.close()
+
+        // Se non ci sono novità, esci subito
+        if (uniqueTimestamps.isEmpty()) {
+            return Pair(emptyList(), lastTimestamp)
+        }
+
+        val sortedTimestamps = uniqueTimestamps.sorted()
+        val highestTimestampInBatch = sortedTimestamps.last()
+
         val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault()).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }
 
-        val database = dbHelper.readableDatabase
+        // Per ogni specifico istante temporale, estraiamo solo i dati reali di quel millisecondo esatto
+        for (ts in sortedTimestamps) {
 
-        // Calcoliamo il timestamp di 15 minuti fa in millisecondi
-        val currentTimeMillis = System.currentTimeMillis()
-        val fifteenMinutesAgoMillis = currentTimeMillis - (15 * 60 * 1000)
+            // CONTROLLO REALE BPM
+            var realBpm = 0
+            val cBpm = database.rawQuery("SELECT bpm FROM bpm WHERE timestamp = ?", arrayOf(ts.toString()))
+            if (cBpm.moveToFirst()) { realBpm = cBpm.getInt(0) }
+            cBpm.close()
 
-        // 1. Estraiamo TUTTI i BPM registrati negli ultimi 15 minuti (rimosso il LIMIT 10)
-        val bpmCursor = database.rawQuery(
-            "SELECT * FROM bpm WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC",
-            arrayOf(fifteenMinutesAgoMillis.toString(), currentTimeMillis.toString())
-        )
+            // CONTROLLO REALE O2
+            var realSpo2 = 0
+            val cO2 = database.rawQuery("SELECT value FROM o2 WHERE timestamp = ?", arrayOf(ts.toString()))
+            if (cO2.moveToFirst()) { realSpo2 = cO2.getInt(0) }
+            cO2.close()
 
-        if (bpmCursor.moveToFirst()) {
-            do {
-                val timestampMillis = bpmCursor.getLong(bpmCursor.getColumnIndexOrThrow("timestamp"))
-                val bpm = bpmCursor.getInt(bpmCursor.getColumnIndexOrThrow("bpm"))
+            // CONTROLLO REALE PRESSIONE
+            var realPressure = "0/0"
+            val cPress = database.rawQuery("SELECT systolic, diastolic FROM pressure WHERE timestamp = ?", arrayOf(ts.toString()))
+            if (cPress.moveToFirst()) {
+                realPressure = "${cPress.getInt(0)}/${cPress.getInt(1)}"
+            }
+            cPress.close()
 
-                // 2. Cerchiamo la misurazione di SpO2 (Tabella o2) più vicina a questo timestamp
-                var realSpo2 = 98 // Fallback
-                val o2Cursor = database.rawQuery(
-                    "SELECT value FROM o2 ORDER BY ABS(timestamp - ?) ASC LIMIT 1",
-                    arrayOf(timestampMillis.toString())
-                )
-                if (o2Cursor.moveToFirst()) {
-                    realSpo2 = o2Cursor.getInt(o2Cursor.getColumnIndexOrThrow("value"))
-                }
-                o2Cursor.close()
-
-                // 3. Cerchiamo la misurazione di Pressione (Tabella pressure) più vicina a questo timestamp
-                var realPressure = "120/80" // Fallback
-                val pressureCursor = database.rawQuery(
-                    "SELECT systolic, diastolic FROM pressure ORDER BY ABS(timestamp - ?) ASC LIMIT 1",
-                    arrayOf(timestampMillis.toString())
-                )
-                if (pressureCursor.moveToFirst()) {
-                    val sys = pressureCursor.getInt(pressureCursor.getColumnIndexOrThrow("systolic"))
-                    val dia = pressureCursor.getInt(pressureCursor.getColumnIndexOrThrow("diastolic"))
-                    realPressure = "$sys/$dia"
-                }
-                pressureCursor.close()
-
-                // 4. Creazione del record combinando i dati reali dell'anello con quelli mockup dello Shimmer
-                val record = AwsRecord(
-                    userId = uId,
-                    x = 0.05,
-                    y = 0.03,
-                    z = 9.65,
-                    activity = "sitting",
-                    heartRate = bpm,
-                    spo2 = realSpo2,
-                    bloodPressure = realPressure,
-                    timestamp = isoFormat.format(Date(timestampMillis))
-                )
-                list.add(record)
-            } while (bpmCursor.moveToNext())
+            // Impacchetta l'oggetto con i dati effettivi e fittizi dello Shimmer
+            val record = AwsRecord(
+                userId = uId,
+                x = 0.05,
+                y = 0.03,
+                z = 9.65,
+                activity = "sitting",
+                heartRate = realBpm,
+                spo2 = realSpo2,
+                bloodPressure = realPressure,
+                timestamp = isoFormat.format(Date(ts))
+            )
+            list.add(record)
         }
-        bpmCursor.close()
 
-        return list
+        return Pair(list, highestTimestampInBatch)
     }
 }
