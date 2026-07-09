@@ -1,6 +1,9 @@
 package com.example.myapplication.UI
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.widget.Button
@@ -9,8 +12,11 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.example.myapplication.R
 import com.example.myapplication.services.GestoreStatistiche
+import com.example.myapplication.services.LocationService
 import com.google.firebase.auth.FirebaseAuth
 
 class Login : AppCompatActivity() {
@@ -53,6 +59,9 @@ class Login : AppCompatActivity() {
                         // FORZA IL RE-INDIRIZZAMENTO DEL DATABASE LOCALE SUL NUOVO UTENTE LOGGATO
                         GestoreStatistiche.resetInstance()
 
+                        // GPS tracking
+                        startGPS()
+
                         val intentLogin = Intent(this, UserProfileActivity::class.java)
                         startActivity(intentLogin)
                         finish()
@@ -83,9 +92,49 @@ class Login : AppCompatActivity() {
             // SE L'UTENTE È GIÀ LOGGATO IN CASH, PREPARIAMO IL SUO DATABASE DEDICATO PRIMA DI ENTRARE
             GestoreStatistiche.resetInstance()
 
+            // GPS tracking
+            if (controllaPermessiGPS())
+                startGPS()
+
             val intentLogin = Intent(this, UserProfileActivity::class.java)
             startActivity(intentLogin)
             finish()
         }
+    }
+
+    private fun controllaPermessiGPS(): Boolean {
+        if (
+            ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+            ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                ),
+                1001
+            )
+        }
+
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED
+            ) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
+                1002
+            )
+        }
+
+
+        return ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun startGPS() {
+        val intent = Intent(this, LocationService::class.java)
+        ContextCompat.startForegroundService(this, intent)
     }
 }
