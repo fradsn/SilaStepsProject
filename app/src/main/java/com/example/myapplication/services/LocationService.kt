@@ -1,20 +1,23 @@
 package com.example.myapplication.services
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.location.Location
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.example.myapplication.R
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import kotlinx.coroutines.*
-import android.location.Location
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
@@ -30,10 +33,25 @@ class LocationService : Service() {
     override fun onCreate() {
         super.onCreate()
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-        startForegroundServiceNotification()
+
+        // CONTROLLO DI SICUREZZA: Avvia la notifica in primo piano solo se ci sono i permessi
+        if (haPermessiPosizione()) {
+            startForegroundServiceNotification()
+        } else {
+            Log.e("LocationService", "Impossibile avviare il servizio in primo piano: permessi mancanti.")
+            // Ferma immediatamente il servizio per evitare il crash irreversibile (SecurityException)
+            stopSelf()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // CONTROLLO DI SICUREZZA: Se i permessi mancano a runtime, non avviare i loop di tracciamento
+        if (!haPermessiPosizione()) {
+            Log.e("LocationService", "Richiesta interrotta in onStartCommand: permessi mancanti.")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         // Avvia il ciclo continuo se non è già attivo
         if (locationJob == null || locationJob?.isActive == false) {
             startPeriodicLocationUpdates(5 * 60 * 1000L) // 5 minuti in millisecondi
@@ -54,7 +72,10 @@ class LocationService : Service() {
     override fun onDestroy() {
         Log.d("LocationService", "Chiusura richiesta. Invio ultimo dato...")
 
-        eseguiUltimoInvioBloccante()
+        // Esegue l'ultimo invio solo se si hanno ancora le autorizzazioni corrette
+        if (haPermessiPosizione()) {
+            eseguiUltimoInvioBloccante()
+        }
 
         // Cancella le coroutine periodiche per evitare che continuino a girare
         serviceScope.cancel()
@@ -69,6 +90,13 @@ class LocationService : Service() {
         }
     }
 
+    // Funzione per verificare se l'app possiede almeno uno dei permessi di localizzazione a runtime
+    private fun haPermessiPosizione(): Boolean {
+        val fineLocation = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+        val coarseLocation = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+
+        return fineLocation == PackageManager.PERMISSION_GRANTED || coarseLocation == PackageManager.PERMISSION_GRANTED
+    }
 
     // Funzione "sospesa" sincrona per recuperare la posizione
     @SuppressLint("MissingPermission")
@@ -115,7 +143,7 @@ class LocationService : Service() {
         )
 
         val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(channel)
+        manager?.createNotificationChannel(channel)
 
         val notification = Notification.Builder(this, channelId)
             .setContentTitle("VitalActivity")
@@ -140,6 +168,8 @@ class LocationService : Service() {
 
     @SuppressLint("MissingPermission")
     private fun requestLocation() {
+        // Un ulteriore controllo di sicurezza prima della richiesta asincrona
+        if (!haPermessiPosizione()) return
 
         // 1) Primo tentativo: GPS
         fusedLocationClient.getCurrentLocation(
@@ -177,8 +207,7 @@ class LocationService : Service() {
         }
     }
 
-
     private fun onPosizioneValida(location: Location) {
-        //ToDo: invio dati posizione
+        //ToDo: invio dati posizione o salvataggio nel database locale
     }
 }
