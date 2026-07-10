@@ -155,7 +155,7 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
     }
 
     private fun refreshPieChart() {
-        val counts = MotionSessionManager.getActivityCounts()
+        val counts = gestoreStatistiche.getActivityCount()
         val total = counts.values.sum()
 
         if (total == 0) {

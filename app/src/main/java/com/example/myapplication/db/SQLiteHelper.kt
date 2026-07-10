@@ -39,12 +39,24 @@ class SQLiteHelper(context: Context, userId: String) :
             );
             """
         )
+
+        db.execSQL(
+            """
+            CREATE TABLE prediction (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp INTEGER NOT NULL,
+                activity INTEGER NOT NULL,
+                confidence INTEGER NOT NULL
+            );
+            """
+        )
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         db.execSQL("DROP TABLE IF EXISTS bpm")
         db.execSQL("DROP TABLE IF EXISTS pressure")
         db.execSQL("DROP TABLE IF EXISTS o2")
+        db.execSQL("DROP TABLE IF EXISTS prediction")
         onCreate(db)
     }
 }

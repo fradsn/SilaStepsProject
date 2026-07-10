@@ -7,6 +7,8 @@ import com.example.myapplication.Motion.model.AccelWindow
 import com.example.myapplication.Motion.pipeline.MotionPipeline
 import com.example.myapplication.Motion.tflite.LocalPredictionResult
 import com.example.myapplication.BT.Shimmer.ShimmerClassicManager
+import com.example.myapplication.db.dao.PredictionDao
+import com.example.myapplication.services.GestoreStatistiche
 import java.util.concurrent.CopyOnWriteArraySet
 
 data class MotionUiState(
@@ -36,13 +38,7 @@ object MotionSessionManager : MotionPipeline.Listener {
     @Volatile
     private var state = MotionUiState()
 
-    private val activityCounts = mutableMapOf(
-        "Walking" to 0,
-        "Jogging" to 0,
-        "Sitting" to 0,
-        "Standing" to 0
-    )
-
+    private lateinit var gestoreStatistiche: GestoreStatistiche
     fun initialize(context: Context) {
         appContext = context.applicationContext
         if (motionPipeline == null) {
@@ -51,6 +47,8 @@ object MotionSessionManager : MotionPipeline.Listener {
                 listener = this
             )
         }
+
+        gestoreStatistiche = GestoreStatistiche.getInstance(context)
     }
 
     fun addObserver(observer: Observer) {
@@ -72,20 +70,11 @@ object MotionSessionManager : MotionPipeline.Listener {
         motionPipeline?.setInferenceEnabled(enabled)
     }
 
-    fun getActivityCounts(): Map<String, Int> = activityCounts.toMap()
-
-    fun resetActivityCounts() {
-        activityCounts.keys.forEach { key ->
-            activityCounts[key] = 0
-        }
-        notifyAllObservers(state)
-    }
 
     fun connectToShimmer(context: Context, macAddress: String) {
         initialize(context)
 
         shimmerManager?.disconnect()
-        resetActivityCounts()
 
         shimmerManager = ShimmerClassicManager.getInstance(
             context = context.applicationContext,
@@ -114,7 +103,6 @@ object MotionSessionManager : MotionPipeline.Listener {
         motionPipeline?.setInferenceEnabled(false)
         motionPipeline?.reset()
         shimmerManager = null
-        resetActivityCounts()
 
         updateState {
             copy(
@@ -146,7 +134,6 @@ object MotionSessionManager : MotionPipeline.Listener {
         motionPipeline?.setInferenceEnabled(false)
         motionPipeline?.reset()
         shimmerManager = null
-        resetActivityCounts()
 
         updateState {
             copy(
@@ -189,15 +176,14 @@ object MotionSessionManager : MotionPipeline.Listener {
 
     override fun onPredictionReceived(result: LocalPredictionResult) {
         val activity = result.prediction
+        val confidence = (result.confidence * 100).toInt().coerceIn(0, 100)
 
-        if (activityCounts.containsKey(activity)) {
-            activityCounts[activity] = (activityCounts[activity] ?: 0) + 1
-        }
+        gestoreStatistiche.salvaPredizione(activity, confidence)
 
         updateState {
             copy(
                 currentActivity = activity,
-                confidencePercent = (result.confidence * 100).toInt().coerceIn(0, 100),
+                confidencePercent = confidence,
                 lastError = null
             )
         }
