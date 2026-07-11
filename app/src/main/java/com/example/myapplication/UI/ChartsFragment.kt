@@ -34,7 +34,7 @@ import com.github.mikephil.charting.formatter.PercentFormatter
 import com.github.mikephil.charting.highlight.Highlight
 import com.github.mikephil.charting.utils.MPPointF
 
-class ChartsFragment : Fragment(), MotionSessionManager.Observer {
+class ChartsFragment : Fragment() {
 
     private lateinit var pieChart: PieChart
     private lateinit var BPMChart: LineChart
@@ -116,8 +116,6 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
         cbLockScrollO2.setOnCheckedChangeListener { _, isChecked -> if (!isChecked) caricaO2() }
         cbLockScrollPressure.setOnCheckedChangeListener { _, isChecked -> if (!isChecked) caricaPressione() }
 
-        MotionSessionManager.addObserver(this)
-
         isBpmFirstLoad = true
         isO2FirstLoad = true
         isPressureFirstLoad = true
@@ -128,19 +126,12 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
 
     override fun onPause() {
         super.onPause()
-        MotionSessionManager.removeObserver(this)
         pollHandler.removeCallbacks(pollRunnable)
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
-        MotionSessionManager.removeObserver(this)
         pollHandler.removeCallbacks(pollRunnable)
-    }
-
-    override fun onMotionStateChanged(state: MotionUiState) {
-        if (!isAdded) return
-        refreshPieChart()
     }
 
     private fun setupPieChartStyle() {
@@ -376,6 +367,7 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
             caricaPressione()
             isPressureFirstLoad = false
         }
+        refreshPieChart()
     }
 }
 

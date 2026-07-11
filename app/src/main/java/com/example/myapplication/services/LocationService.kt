@@ -30,9 +30,13 @@ class LocationService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var locationJob: Job? = null
 
+    private lateinit var gestoreStatistiche: GestoreStatistiche
+
     override fun onCreate() {
         super.onCreate()
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+
+        gestoreStatistiche = GestoreStatistiche.getInstance(this)
 
         // CONTROLLO DI SICUREZZA: Avvia la notifica in primo piano solo se ci sono i permessi
         if (haPermessiPosizione()) {
@@ -208,6 +212,8 @@ class LocationService : Service() {
     }
 
     private fun onPosizioneValida(location: Location) {
-        //ToDo: invio dati posizione o salvataggio nel database locale
+        //ToDo: invio dati posizione
+
+        gestoreStatistiche.salvaPosizione(location.latitude,location.longitude)
     }
 }
