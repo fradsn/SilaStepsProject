@@ -26,33 +26,33 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
     private lateinit var gestoreStatistiche: GestoreStatistiche
     private var ringManager: SmartRingManager? = null
 
-    // Gestione temporizzatore ciclico automatico dell'anello
+    // Automatic cyclic timer management for the smart ring
     private val autoMeasureHandler = Handler(Looper.getMainLooper())
     private var isAutoMeasuring = false
 
-    // Configurazioni intervalli (in Millisecondi)
+    // Interval configurations (in Milliseconds)
     private val SPO2_WINDOW = 30 * 1000L
     private val GAP_WINDOW = 5 * 1000L
-    private val VITAL_VALIDITY_WINDOW = 5 * 60 * 1000L   // Finestra di tolleranza per ossigeno
-    private val VITAL_VALIDITY_WINDOWBPM =  60 * 1000L  // Finestra di tolleranza per BPM
+    private val VITAL_VALIDITY_WINDOW = 5 * 60 * 1000L   // Oxygen validity tolerance window
+    private val VITAL_VALIDITY_WINDOWBPM =  60 * 1000L  // Heart rate validity tolerance window
 
-    // Variabili di cache per la fusione dei dati (Data Fusion)
+    // Cache variables for multi-modal data fusion pipeline
     private var currentActivity: String = "UNKNOWN"
     private var lastBpm: Int? = null
     private var lastBpmTimestamp: Long = 0L
     private var lastSpO2: Int? = null
     private var lastSpO2Timestamp: Long = 0L
 
-    // Meccanismo anti-spam per le notifiche
+    // Notification anti-spam throttling mechanism
     private var lastBpmAlertTime = 0L
     private var lastSpO2AlertTime = 0L
-    private val ALERT_COOLDOWN = 90 * 1000L             // Aspetta almeno 90 secondi prima di ripetere la stessa allerta
+    private val ALERT_COOLDOWN = 90 * 1000L             // Wait at least 90 seconds before re-triggering the same alert type
 
     companion object {
         private const val TAG = "HEALTH_SERVICE"
         private const val NOTIFICATION_ID = 2002
         private const val CHANNEL_ID = "health_monitoring_channel"
-        private const val EMERGENCY_CHANNEL_ID = "health_emergency_channel" // Canale dedicato alle emergenze acustiche
+        private const val EMERGENCY_CHANNEL_ID = "health_emergency_channel" // Dedicated high-importance channel for acoustic emergencies
 
         const val ACTION_START_AUTO = "START_AUTO_MEASUREMENT"
         const val ACTION_STOP_AUTO = "STOP_AUTO_MEASUREMENT"
@@ -70,7 +70,7 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
         ringManager = SmartRingManager.getActiveInstance()
         ringManager?.updateListener(this)
 
-        // Sostituito il mock con il vero Observer di MotionSessionManager
+        // Substituted mock components with the active structural MotionSessionManager Observer instance
         Log.d(TAG, "Connecting as Observer to MotionSessionManager...")
         MotionSessionManager.addObserver(this)
     }
@@ -170,7 +170,7 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
         val totalCycleTimeMs = currentBpmWindowMs + SPO2_WINDOW + (GAP_WINDOW * 2)
         val dynamicOxygenValidityWindow = (totalCycleTimeMs * 1.5).toLong()
 
-        // 1. VALUTAZIONE CONTRASTO BATTITO CARDIACO (BPM) + ATTIVITÀ FISICA
+        // 1. HEART RATE (BPM) + PHYSICAL ACTIVITY CONTRAST EVALUATION
         val bpm = lastBpm
         if (bpm != null) {
             val bpmAgeMs = now - lastBpmTimestamp
@@ -227,7 +227,7 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
             Log.d(TAG, "[LOG-ALERT] BPM evaluation SKIPPED: No ring data has been received yet during this session.")
         }
 
-        // 2. VALUTAZIONE CONTRASTO SATURAZIONE OSSIGENO (SpO2) + ATTIVITÀ FISICA (ORA DINAMICA)
+        // 2. OXYGEN SATURATION (SpO2) + PHYSICAL ACTIVITY CONTRAST EVALUATION (DYNAMIC DURATION)
         val o2 = lastSpO2
         if (o2 != null) {
             val o2AgeMs = now - lastSpO2Timestamp
@@ -259,7 +259,7 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
     }
 
     // =====================================================================================
-    // DISPATCHER ALLERTE: EMISSIONE ACUSTICA E LANCIO ATTIVITÀ POPUP SU SCHERMO (3 CASI)
+    // ALERT DISPATCHER: ACOUSTIC OUTPUT AND WAKE-UP INTERACTION POPUP LAYOUT (3 CASES)
     // =====================================================================================
     private fun triggerAlertNotification(title: String, message: String) {
         Log.w(TAG, "⚠️ [ALERT DISPATCHED TO SYSTEM] Title: '$title' | Message: '$message'")
@@ -267,22 +267,23 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
         val now = System.currentTimeMillis()
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        // 🚨 INTERCETTAZIONE E RISVEGLIO TEMPO REALE AWS CLOUD PIPELINE
+        // 🚨 REAL-TIME AWS CLOUD PIPELINE INTERCEPTION AND WAKE-UP LOGIC
         val cloudAlertType = when {
             title.contains("Oxygen", ignoreCase = true) || message.contains("SpO2", ignoreCase = true) -> "hypoxemia_anomaly"
             title.contains("Bradycardia", ignoreCase = true) || title.contains("Tachycardia", ignoreCase = true) || title.contains("Heart Rate", ignoreCase = true) -> "heart_rate_anomaly"
             else -> "general_health_anomaly"
         }
 
-        // Spedisce l'Intent per svegliare all'istante l'AwsSyncService forzando il caricamento
+        // Dispatches the Explicit Intent using companion references to instantly wake up AwsSyncService bypass queue
         val intentAwsTrigger = Intent(this, AwsSyncService::class.java).apply {
             action = AwsSyncService.ACTION_TRIGGER_IMMEDIATE_SYNC
             putExtra(AwsSyncService.EXTRA_ALERT_TYPE, cloudAlertType)
+            putExtra(AwsSyncService.EXTRA_USER_MESSAGE, "") // Automated sensor anomaly has an empty manual message note
         }
         startService(intentAwsTrigger)
         Log.d(TAG, "[EMERGENCY-BYPASS] Immediate sync request forwarded to AWS with tag: $cloudAlertType")
 
-        // 1. CONFIGURAZIONE DEL CANALE AD ALTA IMPORTANZA CON AUDIO DA SVEGLIA (Android 8.0+)
+        // 1. CONFIGURE HIGH-IMPORTANCE EMERGENCY CHANNEL EQUIPPED WITH ALARM AUDIO (Android 8.0+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val emergencyChannel = NotificationChannel(
                 EMERGENCY_CHANNEL_ID,
@@ -298,7 +299,7 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
             manager.createNotificationChannel(emergencyChannel)
         }
 
-        // 2. PREPARAZIONE DELL'INTENT PER IL POPUP GRAFICO
+        // 2. CONSTRUCT SYSTEM GRAPHIC UI OVERLAY INTENT
         val popupIntent = Intent(this, AlertPopupActivity::class.java).apply {
             putExtra("EXTRA_TITLE", title)
             putExtra("EXTRA_MESSAGE", message)
@@ -313,7 +314,7 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
             android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
         )
 
-        // 3. COSTRUZIONE NOTIFICA (Configurata con priorità massima e categoria CALL/ALARM)
+        // 3. ASSEMBLE NOTIFICATION SYSTEM PACKAGE (Configured with max visibility and system category alarm)
         val alertNotification = NotificationCompat.Builder(this, EMERGENCY_CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(message)
@@ -330,7 +331,7 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
 
         manager.notify(now.toInt(), alertNotification)
 
-        // 4. VERIFICA DELLO STATO HARDWARE DELLO SCHERMO
+        // 4. VERIFY HOST HARDWARE SCREEN INTERACTIVE RUNTIME STATE
         val powerManager = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
         val isInteractive = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT_WATCH) {
             powerManager.isInteractive
@@ -369,7 +370,7 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
     }
 
     // =====================================================================================
-    // GESTIONE METODI ESISTENTI DELLO SMART RING (INVARIATI)
+    // CORE SMART RING MEASUREMENT SCHEDULING RUNNABLES (UNCHANGED)
     // =====================================================================================
     private val autoMeasurementRunnable = object : Runnable {
         override fun run() {

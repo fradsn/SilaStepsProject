@@ -47,6 +47,7 @@ import com.example.myapplication.services.LocationService
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.firebase.auth.FirebaseAuth
 
 class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSessionManager.Observer {
@@ -175,19 +176,24 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
             }
         }
 
+        // Click listener configuration for the new manual report feature
+        view.findViewById<MaterialCardView>(R.id.btnReports)?.setOnClickListener {
+            showReportDialog()
+        }
+
         view.findViewById<ImageButton>(R.id.logout_button)?.setOnClickListener {
             auth.signOut()
 
-            // Arresto di tutti i Foreground Service attivi dell'applicazione
+            // Stop all continuous active foreground system services upon logging out
             context?.stopService(Intent(context, HealthMonitoringService::class.java))
             context?.stopService(Intent(context, LocationService::class.java))
-            context?.stopService(Intent(context, AwsSyncService::class.java)) // Disattiva il sincronizzatore continuo AWS
+            context?.stopService(Intent(context, AwsSyncService::class.java))
 
             SmartRingManager.getActiveInstance()?.disconnect()
             MotionSessionManager.disconnectShimmer()
             MotionSessionManager.removeObserver(this)
 
-            // AZZERA L'ISTANZA DEL DATABASE AL LOGOUT PER EVITARE RESIDUI TRA UTENTI
+            // Reset database singleton to prevent memory leak cross-contamination between user sessions
             GestoreStatistiche.resetInstance()
 
             startActivity(Intent(requireActivity(), Login::class.java))
@@ -198,20 +204,72 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
         setupAdvancedSettings(view)
     }
 
+    private fun showReportDialog() {
+        val context = context ?: return
+        val builder = MaterialAlertDialogBuilder(context)
+        builder.setTitle("Send Report to Digital Twin")
+
+        val inflater = LayoutInflater.from(context)
+        val dialogView = inflater.inflate(R.layout.dialog_user_report, null)
+        val spinner = dialogView.findViewById<Spinner>(R.id.spinnerReportType)
+        val editText = dialogView.findViewById<EditText>(R.id.editTextReportMessage)
+
+        // Mapping human-readable categories to the backend alert_type strings
+        val reportOptions = listOf(
+            "Medical Emergency / Unwell" to "user_report_medical_emergency",
+            "Hardware / Sensor Fault (Ring/Shimmer)" to "user_report_hardware_fault",
+            "Fire / Environmental Hazard" to "user_report_environmental_fire",
+            "Accident / Fall / Injury" to "user_report_accident",
+            "Security Threat / Panic Alert" to "user_report_security_panic",
+            "Other Anomaly" to "user_report_generic"
+        )
+
+        val spinnerAdapter = ArrayAdapter(context, android.R.layout.simple_spinner_item, reportOptions.map { it.first }).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        spinner.adapter = spinnerAdapter
+        builder.setView(dialogView)
+
+        builder.setPositiveButton("Submit") { dialog, _ ->
+            val selectedIndex = spinner.selectedItemPosition
+            val alertType = reportOptions[selectedIndex].second
+            val userMessage = editText.text.toString().trim()
+
+            triggerImmediateUserReport(alertType, userMessage)
+            dialog.dismiss()
+        }
+
+        builder.setNegativeButton("Cancel") { dialog, _ -> dialog.dismiss() }
+        builder.show()
+    }
+
+    private fun triggerImmediateUserReport(alertType: String, message: String) {
+        val context = context ?: return
+
+        // Employs exact matching static references to invoke the service synchronization broadcast smoothly
+        val intent = Intent(context, AwsSyncService::class.java).apply {
+            action = AwsSyncService.ACTION_TRIGGER_IMMEDIATE_SYNC
+            putExtra(AwsSyncService.EXTRA_ALERT_TYPE, alertType)
+            putExtra(AwsSyncService.EXTRA_USER_MESSAGE, message)
+        }
+        context.startService(intent)
+        Toast.makeText(context, "Report sent successfully to Digital Twin pipeline", Toast.LENGTH_SHORT).show()
+    }
+
     private fun setupAdvancedSettings(view: View) {
         spinnerBpmDuration = view.findViewById(R.id.spinnerBpmDuration)
         btnCalibrateBPProfile = view.findViewById(R.id.btnCalibrateBPProfile)
 
         val sharedPref = requireContext().getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
 
-        // Opzioni aggiornate come richiesto, eliminando i 5 minuti
+        // Cleaned measurement option intervals
         val options = arrayOf(
             "80s",
             "140s",
             "200s (Default)"
         )
 
-        // Corrispettivi matematici esatti espressi in millisecondi (ms)
+        // Associated time duration frames mapping directly to ms
         val valuesInMs = arrayOf(
             80 * 1000L,
             140 * 1000L,

@@ -43,9 +43,10 @@ class AwsSyncService : Service() {
 
         private const val SYNC_INTERVAL_MS = 5 * 60 * 1000L
 
-        // Action ed Extra per il risveglio in tempo reale da anomalie vitali
+        // Actions and Extras matching exactly with the Profile and Health services pipeline
         const val ACTION_TRIGGER_IMMEDIATE_SYNC = "com.example.myapplication.TRIGGER_IMMEDIATE_SYNC"
         const val EXTRA_ALERT_TYPE = "EXTRA_ALERT_TYPE"
+        const val EXTRA_USER_MESSAGE = "EXTRA_USER_MESSAGE"
     }
 
     override fun onCreate() {
@@ -58,14 +59,16 @@ class AwsSyncService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_TRIGGER_IMMEDIATE_SYNC) {
             val alertType = intent.getStringExtra(EXTRA_ALERT_TYPE) ?: "unknown_anomaly"
-            Log.w(TAG, "🚨 ALERT RECEIVED FROM HEALTH SERVICE: '$alertType'. Forcing immediate synchronization bypass!")
+            val userMessage = intent.getStringExtra(EXTRA_USER_MESSAGE) ?: ""
 
-            // Lancia un job asincrono immediato fuori dal timer dei 5 minuti
+            Log.w(TAG, "🚨 IMMEDIATE SYNC REQUEST RECEIVED: '$alertType' | Note: '$userMessage'. Bypassing queue loop!")
+
+            // Dispatch an immediate network transmission job outside the normal loop interval
             serviceScope.launch {
                 try {
-                    performSynchronization(forcedAlert = alertType)
+                    performSynchronization(forcedAlert = alertType, customMessage = userMessage)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Forced sync failed", e)
+                    Log.e(TAG, "Immediate forced synchronization failed", e)
                 }
             }
         }
@@ -77,7 +80,7 @@ class AwsSyncService : Service() {
         syncJob = serviceScope.launch {
             while (isActive) {
                 try {
-                    performSynchronization(forcedAlert = null)
+                    performSynchronization(forcedAlert = null, customMessage = null)
                 } catch (e: Exception) {
                     Log.e(TAG, "Exception during active sync loop iteration", e)
                 }
@@ -86,12 +89,12 @@ class AwsSyncService : Service() {
         }
     }
 
-    private suspend fun performSynchronization(forcedAlert: String?) {
-        Log.d(TAG, "Sync operation executing. ForcedAlert state: $forcedAlert")
+    private suspend fun performSynchronization(forcedAlert: String?, customMessage: String? = null) {
+        Log.d(TAG, "Sync operation executing. ForcedAlert state: $forcedAlert | Custom Message: $customMessage")
 
         val currentUser = FirebaseAuth.getInstance().currentUser
         if (currentUser == null) {
-            Log.w(TAG, "User not logged in Firebase. Synchronization postponed.")
+            Log.w(TAG, "User not logged into Firebase session. Synchronization postponed.")
             return
         }
         val firebaseUserId = currentUser.uid
@@ -100,15 +103,21 @@ class AwsSyncService : Service() {
         val lastSyncTimestamp = sharedPrefs.getLong(KEY_LAST_SYNC_TIMESTAMP, 0L)
 
         val dbHelper = SQLiteHelper(applicationContext, firebaseUserId)
-        val (recordsToSend, maxTimestampInBatch) = fetchNewRecordsStrict(dbHelper, firebaseUserId, lastSyncTimestamp, forcedAlert)
+        val (recordsToSend, maxTimestampInBatch) = fetchNewRecordsStrict(
+            dbHelper = dbHelper,
+            uId = firebaseUserId,
+            lastTimestamp = lastSyncTimestamp,
+            forcedAlert = forcedAlert,
+            customMessage = customMessage
+        )
 
         if (recordsToSend.isEmpty()) {
-            Log.d(TAG, "No new measurements found since last iteration.")
+            Log.d(TAG, "No new database entries discovered since the last synchronization cycle.")
             return
         }
 
         val uniqueRecordsToSend = recordsToSend.distinctBy { it.timestamp }
-        Log.d(TAG, "Filtered batch: Original=${recordsToSend.size} | Unique=${uniqueRecordsToSend.size}")
+        Log.d(TAG, "Filtered batch metrics: Original count=${recordsToSend.size} | Unique items count=${uniqueRecordsToSend.size}")
 
         val retrofit = Retrofit.Builder()
             .baseUrl(BASE_URL)
@@ -121,19 +130,19 @@ class AwsSyncService : Service() {
         try {
             val response = apiService.uploadRecords(apiKey = API_KEY, payload = payload)
             if (response.isSuccessful) {
-                Log.d(TAG, "Upload successful! ${uniqueRecordsToSend.size} items sent.")
+                Log.d(TAG, "Cloud sync transmission successful! ${uniqueRecordsToSend.size} records uploaded to target bucket.")
 
                 sharedPrefs.edit().putLong(KEY_LAST_SYNC_TIMESTAMP, maxTimestampInBatch).apply()
 
                 withContext(Dispatchers.Main) {
-                    val msg = if (forcedAlert != null) "🚨 EMERGENCY Cloud Sync Triggered!" else "Cloud Sync Successful!"
+                    val msg = if (forcedAlert != null) "🚨 IMMEDIATE Cloud Sync Triggered!" else "Cloud Sync Successful!"
                     Toast.makeText(applicationContext, "$msg (${uniqueRecordsToSend.size} records)", Toast.LENGTH_SHORT).show()
                 }
             } else {
-                Log.e(TAG, "AWS Endpoint error: ${response.code()} - ${response.errorBody()?.string()}")
+                Log.e(TAG, "AWS Remote Endpoint rejected request: ${response.code()} - ${response.errorBody()?.string()}")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Network failure during background service upload", e)
+            Log.e(TAG, "Network transport failure encountered during background payload upload", e)
         }
     }
 
@@ -141,12 +150,14 @@ class AwsSyncService : Service() {
         dbHelper: SQLiteHelper,
         uId: String,
         lastTimestamp: Long,
-        forcedAlert: String?
+        forcedAlert: String?,
+        customMessage: String?
     ): Pair<List<AwsRecord>, Long> {
         val list = mutableListOf<AwsRecord>()
         val database = dbHelper.readableDatabase
         val uniqueTimestamps = mutableSetOf<Long>()
 
+        // 1. Recupero dei timestamp dai cursori locali
         val cursorBpm = database.rawQuery("SELECT timestamp FROM bpm WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
         while (cursorBpm.moveToNext()) { uniqueTimestamps.add(cursorBpm.getLong(0)) }
         cursorBpm.close()
@@ -167,23 +178,84 @@ class AwsSyncService : Service() {
         while (cursorPosition.moveToNext()) { uniqueTimestamps.add(cursorPosition.getLong(0)) }
         cursorPosition.close()
 
-        if (uniqueTimestamps.isEmpty()) {
-            return Pair(emptyList(), lastTimestamp)
-        }
-
-        val sortedTimestamps = uniqueTimestamps.sorted()
-        val highestTimestampInBatch = sortedTimestamps.last()
-
         val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault()).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }
 
+        // Variabili per la tecnica "last known value" (ultimo valore noto)
         var lastKnownBpm = 0
         var lastKnownSpo2 = 0
         var lastKnownPressure = "0/0"
         var lastKnownLatitude = 0.0
         var lastKnownLongitude = 0.0
         var lastKnownActivity = "UNKNOWN"
+
+        // --- CASO DI FALLBACK (IL TUO SUGGERIMENTO) ---
+        // Se non ci sono nuove misurazioni nel DB, ma è stato forzato un allert/report, creiamo un record fittizio ora
+        if (uniqueTimestamps.isEmpty()) {
+            if (forcedAlert != null) {
+                val currentNowMs = System.currentTimeMillis()
+                Log.w(TAG, "No new measurements found in DB for this alert. Creating a fallback record at current timestamp.")
+
+                // Recuperiamo comunque gli ultimissimi dati memorizzati (anche se antecedenti a lastTimestamp)
+                val cBpm = database.rawQuery("SELECT bpm FROM bpm ORDER BY timestamp DESC LIMIT 1", null)
+                if (cBpm.moveToFirst()) { lastKnownBpm = cBpm.getInt(0) }
+                cBpm.close()
+
+                val cO2 = database.rawQuery("SELECT value FROM o2 ORDER BY timestamp DESC LIMIT 1", null)
+                if (cO2.moveToFirst()) { lastKnownSpo2 = cO2.getInt(0) }
+                cO2.close()
+
+                val cPress = database.rawQuery("SELECT systolic, diastolic FROM pressure ORDER BY timestamp DESC LIMIT 1", null)
+                if (cPress.moveToFirst()) { lastKnownPressure = "${cPress.getInt(0)}/${cPress.getInt(1)}" }
+                cPress.close()
+
+                val cAct = database.rawQuery("SELECT activity FROM prediction ORDER BY timestamp DESC LIMIT 1", null)
+                if (cAct.moveToFirst()) { lastKnownActivity = cAct.getString(0) }
+                cAct.close()
+
+                val cPos = database.rawQuery("SELECT latitude, longitude FROM position ORDER BY timestamp DESC LIMIT 1", null)
+                if (cPos.moveToFirst()) {
+                    lastKnownLatitude = cPos.getDouble(0)
+                    lastKnownLongitude = cPos.getDouble(1)
+                }
+                cPos.close()
+
+                val finalAlertString = if (!customMessage.isNullOrBlank()) {
+                    "$forcedAlert | Note: $customMessage"
+                } else {
+                    forcedAlert
+                }
+
+                val fallbackRecord = AwsRecord(
+                    userId = uId,
+                    x = 0.12,
+                    y = 0.45,
+                    z = 9.81,
+                    activity = lastKnownActivity,
+                    heartRate = lastKnownBpm,
+                    spo2 = lastKnownSpo2,
+                    bloodPressure = lastKnownPressure,
+                    latitude = lastKnownLatitude,
+                    longitude = lastKnownLongitude,
+                    steps = 1540,
+                    alert = finalAlertString,
+                    timestamp = isoFormat.format(Date(currentNowMs))
+                )
+                list.add(fallbackRecord)
+
+                // Ritorniamo il record generato. NON aggiorniamo lastSyncTimestamp con currentNowMs
+                // per evitare di saltare future letture reali se l'orologio di sistema diverge dal DB.
+                return Pair(list, lastTimestamp)
+            } else {
+                // Se non c'è nessun allarme e non ci sono record, non fare nulla
+                return Pair(emptyList(), lastTimestamp)
+            }
+        }
+
+        // 2. Comportamento standard se ci sono record reali nel DB (rimane invariato)
+        val sortedTimestamps = uniqueTimestamps.sorted()
+        val highestTimestampInBatch = sortedTimestamps.last()
 
         for (ts in sortedTimestamps) {
             val cBpm = database.rawQuery("SELECT bpm FROM bpm WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
@@ -195,9 +267,7 @@ class AwsSyncService : Service() {
             cO2.close()
 
             val cPress = database.rawQuery("SELECT systolic, diastolic FROM pressure WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
-            if (cPress.moveToFirst()) {
-                lastKnownPressure = "${cPress.getInt(0)}/${cPress.getInt(1)}"
-            }
+            if (cPress.moveToFirst()) { lastKnownPressure = "${cPress.getInt(0)}/${cPress.getInt(1)}" }
             cPress.close()
 
             val cAct = database.rawQuery("SELECT activity FROM prediction WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
@@ -223,20 +293,25 @@ class AwsSyncService : Service() {
                 latitude = lastKnownLatitude,
                 longitude = lastKnownLongitude,
                 steps = 1540,
-                alert = "no_alert", // Default per lo storico standard
+                alert = "no_alert",
                 timestamp = isoFormat.format(Date(ts))
             )
             list.add(record)
         }
 
-        // 🚨 LOGICA EXTRAPOLAZIONE ANOMALIA: Applica il tipo di allarme SOLO all'ultimo record inserito (il più recente del batch)
+        // Applica il tipo di allarme all'ultimo record inserito del batch reale
         if (forcedAlert != null && list.isNotEmpty()) {
             val lastIndex = list.size - 1
             val mostRecentRecord = list[lastIndex]
 
-            // Sostituiamo il record finale sovrascrivendo unicamente la colonna alert
-            list[lastIndex] = mostRecentRecord.copy(alert = forcedAlert)
-            Log.d(TAG, "Emergency tag successfully injected into the newest record timestamp: ${mostRecentRecord.timestamp}")
+            val finalAlertString = if (!customMessage.isNullOrBlank()) {
+                "$forcedAlert | Note: $customMessage"
+            } else {
+                forcedAlert
+            }
+
+            list[lastIndex] = mostRecentRecord.copy(alert = finalAlertString)
+            Log.w(TAG, "Manual alert injection successful into newest data item: ${mostRecentRecord.timestamp} -> Content: $finalAlertString")
         }
 
         return Pair(list, highestTimestampInBatch)
