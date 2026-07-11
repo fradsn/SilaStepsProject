@@ -40,10 +40,12 @@ class ChartsFragment : Fragment() {
     private lateinit var BPMChart: LineChart
     private lateinit var O2Chart: LineChart
     private lateinit var pressureChart: LineChart
+    private lateinit var stepsChart: LineChart
 
     private lateinit var tvCurrentBpm: TextView
     private lateinit var tvLastO2: TextView
     private lateinit var tvLastPressure: TextView
+    private lateinit var tvTotalSteps: TextView
 
     private lateinit var cbLockScrollBpm: CheckBox
     private lateinit var cbLockScrollO2: CheckBox
@@ -106,6 +108,9 @@ class ChartsFragment : Fragment() {
         pieChart = view.findViewById(R.id.activityChart)
         setupPieChartStyle()
         refreshPieChart()
+
+        stepsChart = view.findViewById(R.id.StepsChart)
+        tvTotalSteps = view.findViewById(R.id.tvTotalSteps)
 
         val customMarker = CustomMarkerView(requireContext(), R.layout.custom_marker_view)
         BPMChart.marker = customMarker
@@ -367,7 +372,34 @@ class ChartsFragment : Fragment() {
             caricaPressione()
             isPressureFirstLoad = false
         }
+
         refreshPieChart()
+        aggiornaPassi()
+    }
+
+    private fun aggiornaPassi() {
+        val listaCompleta = gestoreStatistiche.getSteps().sortedBy { it.timestamp }
+        if (listaCompleta.isEmpty()) return
+
+        tvTotalSteps.text = listaCompleta.last().tot.toString()
+
+        val entries = listaCompleta.map {
+            Entry(it.timestamp.toFloat(), it.tot.toFloat())
+        }
+
+        val timestamps = listaCompleta.map { it.timestamp }
+
+        val dataSet = LineDataSet(entries, "Daily Steps").apply {
+            color = Color.BLUE
+            lineWidth = 3f
+            setDrawCircles(false)
+            setDrawValues(false)
+        }
+
+        val lineData = LineData(dataSet)
+        stepsChart.data = lineData
+        stepsChart.xAxis.valueFormatter = TimeAxisFormatter(timestamps)
+        stepsChart.invalidate()
     }
 }
 
