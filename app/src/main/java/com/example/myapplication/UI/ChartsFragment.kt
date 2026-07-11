@@ -15,15 +15,10 @@ import android.widget.CheckBox
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
-import com.example.myapplication.db.GestoreStatistiche
-import com.example.myapplication.UI.TimeAxisFormatter
-import com.example.myapplication.Motion.session.MotionSessionManager
-import com.example.myapplication.Motion.session.MotionUiState
 import com.example.myapplication.BT.ring.SmartRingManager
 import com.example.myapplication.Motion.session.MotionSessionManager
 import com.example.myapplication.R
-import com.example.myapplication.services.GestoreStatistiche
-import com.example.myapplication.services.TimeAxisFormatter
+import com.example.myapplication.db.GestoreStatistiche
 import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.charts.PieChart
 import com.github.mikephil.charting.components.MarkerView
