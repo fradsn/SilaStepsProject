@@ -35,19 +35,30 @@ class GestoreStatistiche private constructor(context: Context) {
     private val o2Dao = O2Dao(context)
     private val predictionDao = PredictionDao(context)
     private val positionDao = PositionDao(context)
-    private val stepDao = StepDao()
+    private val stepDao = StepDao(context)
 
     fun salvaBpm(bpm: Int) = bpmDao.insert(bpm)
     fun salvaPressione(s: Int, d: Int) = pressureDao.insert(s, d)
     fun salvaO2(value: Int) = o2Dao.insert(value)
     fun salvaPosizione(latitude: Double, longitude: Double) = positionDao.insert(latitude,longitude)
-    fun salvaPredizione(activity: String, confidence: Int) = predictionDao.insert(activity, confidence)
+
+    fun salvaPredizione(activity: String, confidence: Int) {
+        predictionDao.insert(activity, confidence)
+
+        if (activity == "Walking" || activity == "Jogging"){
+            val lastRecord = stepDao.getLastRecord()
+            if (lastRecord != null)
+                salvaPassi(lastRecord.tot + 2)
+        }
+    }
+
+    fun salvaPassi(value: Int) = stepDao.insert(value)
 
     fun getBpm() = bpmDao.getAll()
     fun getPressioni() = pressureDao.getAll()
     fun getO2() = o2Dao.getAll()
     fun getPrediction(): List<PredictionEntry> = predictionDao.getAll()
-    fun getSteps() = stepDao.getAll(getPrediction())
+    fun getSteps() = stepDao.getAll()
 
     fun getActivityCount() = predictionDao.getActivityCount()
 
@@ -57,5 +68,6 @@ class GestoreStatistiche private constructor(context: Context) {
         o2Dao.deleteOlderThan(timestamp)
         predictionDao.deleteOlderThan(timestamp)
         positionDao.deleteOlderThan(timestamp)
+        stepDao.deleteOlderThan(timestamp)
     }
 }

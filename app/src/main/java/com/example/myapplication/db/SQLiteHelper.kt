@@ -61,6 +61,16 @@ class SQLiteHelper(context: Context, userId: String) :
             );
             """
         )
+
+        db.execSQL(
+            """
+            CREATE TABLE steps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp INTEGER NOT NULL,
+                value INTEGER NOT NULL
+            );
+            """
+        )
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {

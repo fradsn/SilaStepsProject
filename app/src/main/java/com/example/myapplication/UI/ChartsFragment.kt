@@ -378,7 +378,7 @@ class ChartsFragment : Fragment() {
     }
 
     private fun aggiornaPassi() {
-        val listaCompleta = gestoreStatistiche.getSteps().sortedBy { it.timestamp }
+        val listaCompleta = gestoreStatistiche.getSteps()
         if (listaCompleta.isEmpty()) return
 
         tvTotalSteps.text = listaCompleta.last().tot.toString()
