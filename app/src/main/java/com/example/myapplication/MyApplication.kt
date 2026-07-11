@@ -2,7 +2,9 @@ package com.example.myapplication
 
 import android.app.Application
 import android.app.Activity
+import android.content.Intent
 import android.icu.util.Calendar
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.work.Constraints
@@ -10,7 +12,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
-import com.example.myapplication.services.AwsSyncWorker
+import com.example.myapplication.services.AwsSyncService
 import com.example.myapplication.workers.DailyCleanupWorker
 import java.util.concurrent.TimeUnit
 
@@ -32,8 +34,10 @@ class MyApplication : Application(), Application.ActivityLifecycleCallbacks {
         // Registra i callback globali per il monitoraggio dello stato della UI
         registerActivityLifecycleCallbacks(this)
 
-        // Mantiene attive le tue logiche di sincronizzazione e pulizia preesistenti
-        setupAwsSyncWorker()
+        // Avvia il servizio persistente di sincronizzazione continua su AWS DynamoDB
+        startAwsSyncService()
+
+        // Mantiene attiva la pulizia giornaliera pianificata
         scheduleDailyCleanup()
     }
 
@@ -56,31 +60,21 @@ class MyApplication : Application(), Application.ActivityLifecycleCallbacks {
     override fun onActivityDestroyed(activity: Activity) {}
 
     // =====================================================================================
-    // GESTIONE OPERAZIONI IN BACKGROUND (SOLO INVIO CICLICO 15 MINUTI)
+    // AVVIO FOREGROUND SERVICE PER PIPELINE DI SINCRONIZZAZIONE AWS DYNAMODB
     // =====================================================================================
-    private fun setupAwsSyncWorker() {
-        val workManager = WorkManager.getInstance(this)
-
-        // Vincoli: esegui solo se il telefono ha una connessione internet attiva
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
-
-        // -------------------------------------------------------------
-        // INVIO PERIODICO OGNI 15 MINUTI (Periodic Work Request)
-        // -------------------------------------------------------------
-        val periodicSyncRequest = PeriodicWorkRequestBuilder<AwsSyncWorker>(15, TimeUnit.MINUTES)
-            .setConstraints(constraints)
-            .build()
-
-        // Registra il lavoro in modo univoco (così non si duplica a ogni avvio dell'app)
-        workManager.enqueueUniquePeriodicWork(
-            "AwsDatabaseSync",
-            ExistingPeriodicWorkPolicy.KEEP, // Mantiene il vecchio se esiste già, evitando di resettare il timer all'avvio
-            periodicSyncRequest
-        )
+    private fun startAwsSyncService() {
+        Log.d("MY_APP", "Launching persistent AwsSyncService...")
+        val serviceIntent = Intent(this, AwsSyncService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
+        }
     }
 
+    // =====================================================================================
+    // GESTIONE OPERAZIONI WORKMANAGER ANCORA ATTIVE (DAILY CLEANUP)
+    // =====================================================================================
     private fun getInitialDelay(targetHour: Int, targetMinute: Int): Long {
         val now = Calendar.getInstance()
 

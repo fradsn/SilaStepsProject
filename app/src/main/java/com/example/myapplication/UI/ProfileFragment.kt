@@ -40,6 +40,7 @@ import com.example.myapplication.BT.ring.SmartRingManager
 import com.example.myapplication.Motion.session.MotionSessionManager
 import com.example.myapplication.Motion.session.MotionUiState
 import com.example.myapplication.R
+import com.example.myapplication.services.AwsSyncService
 import com.example.myapplication.db.GestoreStatistiche
 import com.example.myapplication.services.HealthMonitoringService
 import com.example.myapplication.services.LocationService
@@ -176,7 +177,11 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
 
         view.findViewById<ImageButton>(R.id.logout_button)?.setOnClickListener {
             auth.signOut()
+
+            // Arresto di tutti i Foreground Service attivi dell'applicazione
             context?.stopService(Intent(context, HealthMonitoringService::class.java))
+            context?.stopService(Intent(context, LocationService::class.java))
+            context?.stopService(Intent(context, AwsSyncService::class.java)) // Disattiva il sincronizzatore continuo AWS
 
             SmartRingManager.getActiveInstance()?.disconnect()
             MotionSessionManager.disconnectShimmer()
@@ -184,10 +189,6 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
 
             // AZZERA L'ISTANZA DEL DATABASE AL LOGOUT PER EVITARE RESIDUI TRA UTENTI
             GestoreStatistiche.resetInstance()
-
-            // Disattiva tracking GPS
-            val intent = Intent(requireContext(), LocationService::class.java)
-            requireActivity().stopService(intent)
 
             startActivity(Intent(requireActivity(), Login::class.java))
             requireActivity().finish()
@@ -212,9 +213,9 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
 
         // Corrispettivi matematici esatti espressi in millisecondi (ms)
         val valuesInMs = arrayOf(
-            80 * 1000L,   // 1m e 20s = 80 secondi
-            140 * 1000L,  // 2m e 20s = 140 secondi
-            200 * 1000L   // 3m e 20s = 200 secondi (Default iniziale)
+            80 * 1000L,
+            140 * 1000L,
+            200 * 1000L
         )
 
         val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, options).apply {
@@ -222,8 +223,6 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
         }
         spinnerBpmDuration.adapter = adapter
 
-        // Recupera la vecchia durata salvata: se non trova nulla o se corrisponde a un vecchio valore rimosso (tipo i 5 minuti),
-        // assegna l'indice 2, ovvero il default di "3 Minutes 20s" (200.000 ms)
         val savedDurationMs = sharedPref.getLong("auto_bpm_window_ms", 200 * 1000L)
         val defaultIndex = valuesInMs.indexOf(savedDurationMs).let { if (it == -1) 2 else it }
         spinnerBpmDuration.setSelection(defaultIndex)
