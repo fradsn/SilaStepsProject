@@ -35,6 +35,7 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
     private val GAP_WINDOW = 5 * 1000L
     private val VITAL_VALIDITY_WINDOW = 5 * 60 * 1000L   // Finestra di tolleranza per ossigeno
     private val VITAL_VALIDITY_WINDOWBPM =  60 * 1000L  // Finestra di tolleranza per BPM
+
     // Variabili di cache per la fusione dei dati (Data Fusion)
     private var currentActivity: String = "UNKNOWN"
     private var lastBpm: Int? = null
@@ -157,20 +158,15 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
     // =====================================================================================
     // MULTI-MODAL DATA FUSION ALERTING MODULE
     // =====================================================================================
-
     private fun checkAlertingLogic() {
         val now = System.currentTimeMillis()
         val activity = currentActivity
 
         Log.d(TAG, "[LOG-ALERT] Pipeline evaluation started. Current Context Activity: '$activity'")
 
-        // LEGGE L'INTERVALLO SCELTO DALL'UTENTE (Default 200s se non trova nulla)
         val sharedPref = getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
         val currentBpmWindowMs = sharedPref.getLong("auto_bpm_window_ms", 200 * 1000L)
 
-        // CALCOLO DINAMICO FINESTRA OSSIGENO:
-        // Un ciclo intero dura: bpmWindow + spo2Window (30s) + 2*gap (10s).
-        // Diamo una tolleranza pari a 1.5 volte la durata del ciclo completo (flessibile ma sicuro).
         val totalCycleTimeMs = currentBpmWindowMs + SPO2_WINDOW + (GAP_WINDOW * 2)
         val dynamicOxygenValidityWindow = (totalCycleTimeMs * 1.5).toLong()
 
@@ -271,6 +267,21 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
         val now = System.currentTimeMillis()
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
+        // 🚨 INTERCETTAZIONE E RISVEGLIO TEMPO REALE AWS CLOUD PIPELINE
+        val cloudAlertType = when {
+            title.contains("Oxygen", ignoreCase = true) || message.contains("SpO2", ignoreCase = true) -> "hypoxemia_anomaly"
+            title.contains("Bradycardia", ignoreCase = true) || title.contains("Tachycardia", ignoreCase = true) || title.contains("Heart Rate", ignoreCase = true) -> "heart_rate_anomaly"
+            else -> "general_health_anomaly"
+        }
+
+        // Spedisce l'Intent per svegliare all'istante l'AwsSyncService forzando il caricamento
+        val intentAwsTrigger = Intent(this, AwsSyncService::class.java).apply {
+            action = AwsSyncService.ACTION_TRIGGER_IMMEDIATE_SYNC
+            putExtra(AwsSyncService.EXTRA_ALERT_TYPE, cloudAlertType)
+        }
+        startService(intentAwsTrigger)
+        Log.d(TAG, "[EMERGENCY-BYPASS] Immediate sync request forwarded to AWS with tag: $cloudAlertType")
+
         // 1. CONFIGURAZIONE DEL CANALE AD ALTA IMPORTANZA CON AUDIO DA SVEGLIA (Android 8.0+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val emergencyChannel = NotificationChannel(
@@ -281,7 +292,7 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
                 description = "Critical vital signs and health danger alerts"
                 enableLights(true)
                 enableVibration(true)
-                setBypassDnd(true) // Passa sopra la modalità "Non Disturbare" se attiva
+                setBypassDnd(true)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
             manager.createNotificationChannel(emergencyChannel)
@@ -312,7 +323,7 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
             .setDefaults(Notification.DEFAULT_ALL)
             .setAutoCancel(true)
             .setOngoing(true)
-            .setFullScreenIntent(fullScreenPendingIntent, true) // CASO 1: Schermo Spento
+            .setFullScreenIntent(fullScreenPendingIntent, true)
             .setContentIntent(fullScreenPendingIntent)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
@@ -330,11 +341,9 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
 
         if (isInteractive) {
             if (MyApplication.isAppInForeground()) {
-                // CASO 2: App Attiva (In Foreground) -> Apertura diretta istantanea
                 Log.d(TAG, "[LOG-ALERT] Screen is ON and App is in FOREGROUND. Launching popup Activity directly.")
                 startActivity(popupIntent)
             } else {
-                // CASO 3: App in Background (Schermo Acceso) -> Richiede autorizzazione overlay speciale
                 Log.d(TAG, "[LOG-ALERT] Screen is ON but App is in BACKGROUND. Checking SYSTEM_ALERT_WINDOW permission...")
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && android.provider.Settings.canDrawOverlays(this)) {
@@ -435,7 +444,6 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
     override fun onDestroy() {
         super.onDestroy()
         stopAutomatedCycle()
-        // Rimozione pulita dell'Observer per prevenire leak di memoria
         MotionSessionManager.removeObserver(this)
         Log.d(TAG, "Health Monitoring Service Destroyed")
     }

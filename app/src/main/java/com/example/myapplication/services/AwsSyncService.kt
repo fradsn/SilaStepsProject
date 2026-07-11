@@ -41,41 +41,53 @@ class AwsSyncService : Service() {
         private const val NOTIFICATION_ID = 2005
         private const val CHANNEL_ID = "aws_sync_channel"
 
-        // Intervallo di sveglia del ciclo impostato a 5 minuti
         private const val SYNC_INTERVAL_MS = 5 * 60 * 1000L
+
+        // Action ed Extra per il risveglio in tempo reale da anomalie vitali
+        const val ACTION_TRIGGER_IMMEDIATE_SYNC = "com.example.myapplication.TRIGGER_IMMEDIATE_SYNC"
+        const val EXTRA_ALERT_TYPE = "EXTRA_ALERT_TYPE"
     }
 
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "AwsSyncService Created. Starting Foreground Configuration...")
         startForeground(NOTIFICATION_ID, createNotification())
-
-        // Avvia il ciclo infinito temporizzato
         startSyncLoop()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "AwsSyncService onStartCommand called.")
+        if (intent?.action == ACTION_TRIGGER_IMMEDIATE_SYNC) {
+            val alertType = intent.getStringExtra(EXTRA_ALERT_TYPE) ?: "unknown_anomaly"
+            Log.w(TAG, "🚨 ALERT RECEIVED FROM HEALTH SERVICE: '$alertType'. Forcing immediate synchronization bypass!")
+
+            // Lancia un job asincrono immediato fuori dal timer dei 5 minuti
+            serviceScope.launch {
+                try {
+                    performSynchronization(forcedAlert = alertType)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Forced sync failed", e)
+                }
+            }
+        }
         return START_STICKY
     }
 
     private fun startSyncLoop() {
-        syncJob?.cancel() // Evita loop sovrapposti
+        syncJob?.cancel()
         syncJob = serviceScope.launch {
             while (isActive) {
                 try {
-                    performSynchronization()
+                    performSynchronization(forcedAlert = null)
                 } catch (e: Exception) {
                     Log.e(TAG, "Exception during active sync loop iteration", e)
                 }
-                // Si mette in pausa per 5 minuti prima del prossimo ciclo
                 delay(SYNC_INTERVAL_MS)
             }
         }
     }
 
-    private suspend fun performSynchronization() {
-        Log.d(TAG, "Sync loop awakened. Executing database export...")
+    private suspend fun performSynchronization(forcedAlert: String?) {
+        Log.d(TAG, "Sync operation executing. ForcedAlert state: $forcedAlert")
 
         val currentUser = FirebaseAuth.getInstance().currentUser
         if (currentUser == null) {
@@ -88,14 +100,13 @@ class AwsSyncService : Service() {
         val lastSyncTimestamp = sharedPrefs.getLong(KEY_LAST_SYNC_TIMESTAMP, 0L)
 
         val dbHelper = SQLiteHelper(applicationContext, firebaseUserId)
-        val (recordsToSend, maxTimestampInBatch) = fetchNewRecordsStrict(dbHelper, firebaseUserId, lastSyncTimestamp)
+        val (recordsToSend, maxTimestampInBatch) = fetchNewRecordsStrict(dbHelper, firebaseUserId, lastSyncTimestamp, forcedAlert)
 
         if (recordsToSend.isEmpty()) {
             Log.d(TAG, "No new measurements found since last iteration.")
             return
         }
 
-        // Rimozione duplicati anti-ValidationException per DynamoDB
         val uniqueRecordsToSend = recordsToSend.distinctBy { it.timestamp }
         Log.d(TAG, "Filtered batch: Original=${recordsToSend.size} | Unique=${uniqueRecordsToSend.size}")
 
@@ -115,11 +126,8 @@ class AwsSyncService : Service() {
                 sharedPrefs.edit().putLong(KEY_LAST_SYNC_TIMESTAMP, maxTimestampInBatch).apply()
 
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        applicationContext,
-                        "Cloud Sync Successful! (${uniqueRecordsToSend.size} records)",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    val msg = if (forcedAlert != null) "🚨 EMERGENCY Cloud Sync Triggered!" else "Cloud Sync Successful!"
+                    Toast.makeText(applicationContext, "$msg (${uniqueRecordsToSend.size} records)", Toast.LENGTH_SHORT).show()
                 }
             } else {
                 Log.e(TAG, "AWS Endpoint error: ${response.code()} - ${response.errorBody()?.string()}")
@@ -129,32 +137,32 @@ class AwsSyncService : Service() {
         }
     }
 
-    private fun fetchNewRecordsStrict(dbHelper: SQLiteHelper, uId: String, lastTimestamp: Long): Pair<List<AwsRecord>, Long> {
+    private fun fetchNewRecordsStrict(
+        dbHelper: SQLiteHelper,
+        uId: String,
+        lastTimestamp: Long,
+        forcedAlert: String?
+    ): Pair<List<AwsRecord>, Long> {
         val list = mutableListOf<AwsRecord>()
         val database = dbHelper.readableDatabase
         val uniqueTimestamps = mutableSetOf<Long>()
 
-        // 1. Prendi i timestamp da 'bpm'
         val cursorBpm = database.rawQuery("SELECT timestamp FROM bpm WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
         while (cursorBpm.moveToNext()) { uniqueTimestamps.add(cursorBpm.getLong(0)) }
         cursorBpm.close()
 
-        // 2. Prendi i timestamp da 'o2'
         val cursorO2 = database.rawQuery("SELECT timestamp FROM o2 WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
         while (cursorO2.moveToNext()) { uniqueTimestamps.add(cursorO2.getLong(0)) }
         cursorO2.close()
 
-        // 3. Prendi i timestamp da 'pressure'
         val cursorPressure = database.rawQuery("SELECT timestamp FROM pressure WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
         while (cursorPressure.moveToNext()) { uniqueTimestamps.add(cursorPressure.getLong(0)) }
         cursorPressure.close()
 
-        // 4. Prendi i timestamp reali da 'prediction' (Storico Attività Shimmer)
         val cursorPrediction = database.rawQuery("SELECT timestamp FROM prediction WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
         while (cursorPrediction.moveToNext()) { uniqueTimestamps.add(cursorPrediction.getLong(0)) }
         cursorPrediction.close()
 
-        // 5. Prendi i timestamp reali da 'position' (Storico GPS)
         val cursorPosition = database.rawQuery("SELECT timestamp FROM position WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
         while (cursorPosition.moveToNext()) { uniqueTimestamps.add(cursorPosition.getLong(0)) }
         cursorPosition.close()
@@ -170,7 +178,6 @@ class AwsSyncService : Service() {
             timeZone = TimeZone.getTimeZone("UTC")
         }
 
-        // Variabili di cache per la logica di Forward Filling
         var lastKnownBpm = 0
         var lastKnownSpo2 = 0
         var lastKnownPressure = "0/0"
@@ -179,30 +186,24 @@ class AwsSyncService : Service() {
         var lastKnownActivity = "UNKNOWN"
 
         for (ts in sortedTimestamps) {
-
-            // 1. Recupera l'ultimo dato utile per i BPM
             val cBpm = database.rawQuery("SELECT bpm FROM bpm WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
             if (cBpm.moveToFirst()) { lastKnownBpm = cBpm.getInt(0) }
             cBpm.close()
 
-            // 2. Recupera l'ultimo dato utile per lo SpO2
             val cO2 = database.rawQuery("SELECT value FROM o2 WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
             if (cO2.moveToFirst()) { lastKnownSpo2 = cO2.getInt(0) }
             cO2.close()
 
-            // 3. Recupera l'ultimo dato utile per la Pressione
             val cPress = database.rawQuery("SELECT systolic, diastolic FROM pressure WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
             if (cPress.moveToFirst()) {
                 lastKnownPressure = "${cPress.getInt(0)}/${cPress.getInt(1)}"
             }
             cPress.close()
 
-            // 4. Recupera lo storico reale del contesto dell'attività Shimmer
             val cAct = database.rawQuery("SELECT activity FROM prediction WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
             if (cAct.moveToFirst()) { lastKnownActivity = cAct.getString(0) }
             cAct.close()
 
-            // 5. Recupera lo storico reale della Posizione GPS
             val cPos = database.rawQuery("SELECT latitude, longitude FROM position WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
             if (cPos.moveToFirst()) {
                 lastKnownLatitude = cPos.getDouble(0)
@@ -210,30 +211,32 @@ class AwsSyncService : Service() {
             }
             cPos.close()
 
-            // Classificazione realistica delle anomalie basata sui valori fusi correnti
-            val currentAlert = when {
-                lastKnownBpm > 0 && (lastKnownBpm < 50 || lastKnownBpm > 100) -> "heart_rate_anomaly"
-                lastKnownSpo2 > 0 && lastKnownSpo2 < 92 -> "hypoxemia_anomaly"
-                else -> "normal"
-            }
-
-            // Impacchettamento definitivo dell'oggetto AwsRecord
             val record = AwsRecord(
                 userId = uId,
-                x = 0.12,                               // PROVVISORIAMNETE FITTIZIO
-                y = 0.45,                               // PROVVISORIAMNETE FITTIZIO
-                z = 9.81,                               // PROVVISORIAMNETE FITTIZIO
-                activity = lastKnownActivity,           // REALE DA DB
-                heartRate = lastKnownBpm,               // REALE DA DB
-                spo2 = lastKnownSpo2,                   // REALE DA DB
-                bloodPressure = lastKnownPressure,       // REALE DA DB
-                latitude = lastKnownLatitude,           // REALE DA DB
-                longitude = lastKnownLongitude,         // REALE DA DB
-                steps = 1540,                           // PROVVISORIAMENTE FITTIZIO (Tabella non ancora creata)
-                alert = currentAlert,                   // DINAMICO SU PARAMETRI REALI
+                x = 0.12,
+                y = 0.45,
+                z = 9.81,
+                activity = lastKnownActivity,
+                heartRate = lastKnownBpm,
+                spo2 = lastKnownSpo2,
+                bloodPressure = lastKnownPressure,
+                latitude = lastKnownLatitude,
+                longitude = lastKnownLongitude,
+                steps = 1540,
+                alert = "no_alert", // Default per lo storico standard
                 timestamp = isoFormat.format(Date(ts))
             )
             list.add(record)
+        }
+
+        // 🚨 LOGICA EXTRAPOLAZIONE ANOMALIA: Applica il tipo di allarme SOLO all'ultimo record inserito (il più recente del batch)
+        if (forcedAlert != null && list.isNotEmpty()) {
+            val lastIndex = list.size - 1
+            val mostRecentRecord = list[lastIndex]
+
+            // Sostituiamo il record finale sovrascrivendo unicamente la colonna alert
+            list[lastIndex] = mostRecentRecord.copy(alert = forcedAlert)
+            Log.d(TAG, "Emergency tag successfully injected into the newest record timestamp: ${mostRecentRecord.timestamp}")
         }
 
         return Pair(list, highestTimestampInBatch)
