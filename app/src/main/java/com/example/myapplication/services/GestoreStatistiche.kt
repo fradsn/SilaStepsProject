@@ -3,8 +3,12 @@ package com.example.myapplication.services
 import android.content.Context
 import com.example.myapplication.db.dao.BpmDao
 import com.example.myapplication.db.dao.O2Dao
+import com.example.myapplication.db.dao.PositionDao
 import com.example.myapplication.db.dao.PredictionDao
 import com.example.myapplication.db.dao.PressureDao
+import com.example.myapplication.db.dao.StepDao
+import com.example.myapplication.db.models.PredictionEntry
+import com.example.myapplication.db.models.StepEntry
 
 class GestoreStatistiche private constructor(context: Context) {
 
@@ -31,15 +35,20 @@ class GestoreStatistiche private constructor(context: Context) {
     private val pressureDao = PressureDao(context)
     private val o2Dao = O2Dao(context)
     private val predictionDao = PredictionDao(context)
+    private val positionDao = PositionDao(context)
+    private val stepDao = StepDao()
 
     fun salvaBpm(bpm: Int) = bpmDao.insert(bpm)
     fun salvaPressione(s: Int, d: Int) = pressureDao.insert(s, d)
     fun salvaO2(value: Int) = o2Dao.insert(value)
+    fun salvaPosizione(latitude: Double, longitude: Double) = positionDao.insert(latitude,longitude)
     fun salvaPredizione(activity: String, confidence: Int) = predictionDao.insert(activity, confidence)
 
     fun getBpm() = bpmDao.getAll()
     fun getPressioni() = pressureDao.getAll()
     fun getO2() = o2Dao.getAll()
+    fun getPrediction(): List<PredictionEntry> = predictionDao.getAll()
+    fun getSteps() = stepDao.getAll(getPrediction())
 
     fun getActivityCount() = predictionDao.getActivityCount()
 
@@ -48,5 +57,6 @@ class GestoreStatistiche private constructor(context: Context) {
         pressureDao.deleteOlderThan(timestamp)
         o2Dao.deleteOlderThan(timestamp)
         predictionDao.deleteOlderThan(timestamp)
+        positionDao.deleteOlderThan(timestamp)
     }
 }

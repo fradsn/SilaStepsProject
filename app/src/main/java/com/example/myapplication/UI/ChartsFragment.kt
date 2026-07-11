@@ -34,16 +34,18 @@ import com.github.mikephil.charting.formatter.PercentFormatter
 import com.github.mikephil.charting.highlight.Highlight
 import com.github.mikephil.charting.utils.MPPointF
 
-class ChartsFragment : Fragment(), MotionSessionManager.Observer {
+class ChartsFragment : Fragment() {
 
     private lateinit var pieChart: PieChart
     private lateinit var BPMChart: LineChart
     private lateinit var O2Chart: LineChart
     private lateinit var pressureChart: LineChart
+    private lateinit var stepsChart: LineChart
 
     private lateinit var tvCurrentBpm: TextView
     private lateinit var tvLastO2: TextView
     private lateinit var tvLastPressure: TextView
+    private lateinit var tvTotalSteps: TextView
 
     private lateinit var cbLockScrollBpm: CheckBox
     private lateinit var cbLockScrollO2: CheckBox
@@ -107,6 +109,9 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
         setupPieChartStyle()
         refreshPieChart()
 
+        stepsChart = view.findViewById(R.id.StepsChart)
+        tvTotalSteps = view.findViewById(R.id.tvTotalSteps)
+
         val customMarker = CustomMarkerView(requireContext(), R.layout.custom_marker_view)
         BPMChart.marker = customMarker
         O2Chart.marker = customMarker
@@ -115,8 +120,6 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
         cbLockScrollBpm.setOnCheckedChangeListener { _, isChecked -> if (!isChecked) caricaBpm() }
         cbLockScrollO2.setOnCheckedChangeListener { _, isChecked -> if (!isChecked) caricaO2() }
         cbLockScrollPressure.setOnCheckedChangeListener { _, isChecked -> if (!isChecked) caricaPressione() }
-
-        MotionSessionManager.addObserver(this)
 
         isBpmFirstLoad = true
         isO2FirstLoad = true
@@ -128,19 +131,12 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
 
     override fun onPause() {
         super.onPause()
-        MotionSessionManager.removeObserver(this)
         pollHandler.removeCallbacks(pollRunnable)
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
-        MotionSessionManager.removeObserver(this)
         pollHandler.removeCallbacks(pollRunnable)
-    }
-
-    override fun onMotionStateChanged(state: MotionUiState) {
-        if (!isAdded) return
-        refreshPieChart()
     }
 
     private fun setupPieChartStyle() {
@@ -376,6 +372,34 @@ class ChartsFragment : Fragment(), MotionSessionManager.Observer {
             caricaPressione()
             isPressureFirstLoad = false
         }
+
+        refreshPieChart()
+        aggiornaPassi()
+    }
+
+    private fun aggiornaPassi() {
+        val listaCompleta = gestoreStatistiche.getSteps().sortedBy { it.timestamp }
+        if (listaCompleta.isEmpty()) return
+
+        tvTotalSteps.text = listaCompleta.last().tot.toString()
+
+        val entries = listaCompleta.map {
+            Entry(it.timestamp.toFloat(), it.tot.toFloat())
+        }
+
+        val timestamps = listaCompleta.map { it.timestamp }
+
+        val dataSet = LineDataSet(entries, "Daily Steps").apply {
+            color = Color.BLUE
+            lineWidth = 3f
+            setDrawCircles(false)
+            setDrawValues(false)
+        }
+
+        val lineData = LineData(dataSet)
+        stepsChart.data = lineData
+        stepsChart.xAxis.valueFormatter = TimeAxisFormatter(timestamps)
+        stepsChart.invalidate()
     }
 }
 
