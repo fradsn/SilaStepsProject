@@ -14,8 +14,8 @@ import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.TextView
 import androidx.fragment.app.Fragment
-import com.example.myapplication.services.GestoreStatistiche
-import com.example.myapplication.services.TimeAxisFormatter
+import com.example.myapplication.db.GestoreStatistiche
+import com.example.myapplication.UI.TimeAxisFormatter
 import com.example.myapplication.Motion.session.MotionSessionManager
 import com.example.myapplication.Motion.session.MotionUiState
 import com.example.myapplication.BT.ring.SmartRingManager

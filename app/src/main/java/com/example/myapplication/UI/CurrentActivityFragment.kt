@@ -28,7 +28,7 @@ import com.example.myapplication.BT.ring.SmartRingManager
 import com.example.myapplication.Motion.session.MotionSessionManager
 import com.example.myapplication.Motion.session.MotionUiState
 import com.example.myapplication.R
-import com.example.myapplication.services.GestoreStatistiche
+import com.example.myapplication.db.GestoreStatistiche
 import com.example.myapplication.services.HealthMonitoringService
 import com.google.android.material.switchmaterial.SwitchMaterial
 

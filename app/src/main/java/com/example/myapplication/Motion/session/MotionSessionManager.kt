@@ -8,7 +8,7 @@ import com.example.myapplication.Motion.pipeline.MotionPipeline
 import com.example.myapplication.Motion.tflite.LocalPredictionResult
 import com.example.myapplication.BT.Shimmer.ShimmerClassicManager
 import com.example.myapplication.db.dao.PredictionDao
-import com.example.myapplication.services.GestoreStatistiche
+import com.example.myapplication.db.GestoreStatistiche
 import java.util.concurrent.CopyOnWriteArraySet
 
 data class MotionUiState(

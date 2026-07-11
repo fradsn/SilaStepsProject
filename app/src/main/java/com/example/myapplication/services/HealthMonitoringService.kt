@@ -19,6 +19,7 @@ import com.example.myapplication.Motion.session.MotionUiState
 import com.example.myapplication.MyApplication
 import com.example.myapplication.R
 import com.example.myapplication.UI.AlertPopupActivity
+import com.example.myapplication.db.GestoreStatistiche
 
 class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, MotionSessionManager.Observer {
 

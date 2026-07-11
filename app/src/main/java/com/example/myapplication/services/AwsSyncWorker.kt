@@ -1,7 +1,6 @@
-package com.example.myapplication.workers
+package com.example.myapplication.services
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.util.Log
 import android.widget.Toast
 import androidx.work.CoroutineWorker

@@ -10,7 +10,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
-import com.example.myapplication.workers.AwsSyncWorker
+import com.example.myapplication.services.AwsSyncWorker
 import com.example.myapplication.workers.DailyCleanupWorker
 import java.util.concurrent.TimeUnit
 

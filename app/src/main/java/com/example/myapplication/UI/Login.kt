@@ -15,7 +15,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.myapplication.R
-import com.example.myapplication.services.GestoreStatistiche
+import com.example.myapplication.db.GestoreStatistiche
 import com.example.myapplication.services.LocationService
 import com.google.firebase.auth.FirebaseAuth
 

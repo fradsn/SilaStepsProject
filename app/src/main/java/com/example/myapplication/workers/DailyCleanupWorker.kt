@@ -3,7 +3,7 @@ package com.example.myapplication.workers
 import android.content.Context
 import androidx.work.Worker
 import androidx.work.WorkerParameters
-import com.example.myapplication.services.GestoreStatistiche
+import com.example.myapplication.db.GestoreStatistiche
 import java.util.Calendar
 
 class DailyCleanupWorker(
