@@ -41,8 +41,8 @@ class AwsSyncService : Service() {
         private const val NOTIFICATION_ID = 2005
         private const val CHANNEL_ID = "aws_sync_channel"
 
-        // Intervallo di sveglia del ciclo (15 Minuti espressi in Millisecondi)
-        private const val SYNC_INTERVAL_MS = 3* 60 * 1000L
+        // Intervallo di sveglia del ciclo (5 Minuti espressi in Millisecondi)
+        private const val SYNC_INTERVAL_MS = 5 * 60 * 1000L
     }
 
     override fun onCreate() {
