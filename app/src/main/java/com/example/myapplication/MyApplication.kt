@@ -56,7 +56,7 @@ class MyApplication : Application(), Application.ActivityLifecycleCallbacks {
     override fun onActivityDestroyed(activity: Activity) {}
 
     // =====================================================================================
-    // GESTIONE OPERAZIONI IN BACKGROUND ESISTENTI (WORKMANAGER - INVARIATI)
+    // GESTIONE OPERAZIONI IN BACKGROUND (SOLO INVIO CICLICO 15 MINUTI)
     // =====================================================================================
     private fun setupAwsSyncWorker() {
         val workManager = WorkManager.getInstance(this)

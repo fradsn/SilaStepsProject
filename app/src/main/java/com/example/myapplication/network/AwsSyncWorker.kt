@@ -56,25 +56,31 @@ class AwsSyncWorker(
             return Result.success()
         }
 
+        // 🚨 RISOLUZIONE BUG DYNAMODB: Filtra e mantiene un unico record per ogni timestamp per evitare duplicati in BatchWriteItem
+        val uniqueRecordsToSend = recordsToSend.distinctBy { it.timestamp }
+        Log.d(TAG, "Cleaned batch for AWS: Original size = ${recordsToSend.size} | Unique size = ${uniqueRecordsToSend.size}")
+
         val retrofit = Retrofit.Builder()
             .baseUrl(BASE_URL)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
 
         val apiService = retrofit.create(AwsApiService::class.java)
-        val payload = AwsSyncPayload(records = recordsToSend)
+
+        // Assegna la lista pulita priva di chiavi duplicate al payload di rete
+        val payload = AwsSyncPayload(records = uniqueRecordsToSend)
 
         return try {
             val response = apiService.uploadRecords(apiKey = API_KEY, payload = payload)
             if (response.isSuccessful) {
-                Log.d(TAG, "Sync successful! ${recordsToSend.size} records uploaded.")
+                Log.d(TAG, "Sync successful! ${uniqueRecordsToSend.size} records uploaded.")
 
                 sharedPrefs.edit().putLong(KEY_LAST_SYNC_TIMESTAMP, maxTimestampInBatch).apply()
 
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         applicationContext,
-                        "Data successfully synced with DynamoDB! (${recordsToSend.size} records)",
+                        "Data successfully synced with DynamoDB! (${uniqueRecordsToSend.size} records)",
                         Toast.LENGTH_SHORT
                     ).show()
                 }
@@ -94,25 +100,20 @@ class AwsSyncWorker(
         val list = mutableListOf<AwsRecord>()
         val database = dbHelper.readableDatabase
 
-        // Raccogliamo tutti i timestamp unici in cui è stata effettuata ALMENO una misurazione
         val uniqueTimestamps = mutableSetOf<Long>()
 
-        // 1. Prendi i timestamp da 'bpm'
         val cursorBpm = database.rawQuery("SELECT timestamp FROM bpm WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
         while (cursorBpm.moveToNext()) { uniqueTimestamps.add(cursorBpm.getLong(0)) }
         cursorBpm.close()
 
-        // 2. Prendi i timestamp da 'o2'
-        val cursorO2 = database.rawQuery("SELECT timestamp FROM o2 WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
+        val cursorO2 = database.rawQuery("SELECT value FROM o2 WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
         while (cursorO2.moveToNext()) { uniqueTimestamps.add(cursorO2.getLong(0)) }
         cursorO2.close()
 
-        // 3. Prendi i timestamp da 'pressure'
         val cursorPressure = database.rawQuery("SELECT timestamp FROM pressure WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
         while (cursorPressure.moveToNext()) { uniqueTimestamps.add(cursorPressure.getLong(0)) }
         cursorPressure.close()
 
-        // Se non ci sono novità, esci subito
         if (uniqueTimestamps.isEmpty()) {
             return Pair(emptyList(), lastTimestamp)
         }
@@ -124,22 +125,17 @@ class AwsSyncWorker(
             timeZone = TimeZone.getTimeZone("UTC")
         }
 
-        // Per ogni specifico istante temporale, estraiamo solo i dati reali di quel millisecondo esatto
         for (ts in sortedTimestamps) {
-
-            // CONTROLLO REALE BPM
             var realBpm = 0
             val cBpm = database.rawQuery("SELECT bpm FROM bpm WHERE timestamp = ?", arrayOf(ts.toString()))
             if (cBpm.moveToFirst()) { realBpm = cBpm.getInt(0) }
             cBpm.close()
 
-            // CONTROLLO REALE O2
             var realSpo2 = 0
             val cO2 = database.rawQuery("SELECT value FROM o2 WHERE timestamp = ?", arrayOf(ts.toString()))
             if (cO2.moveToFirst()) { realSpo2 = cO2.getInt(0) }
             cO2.close()
 
-            // CONTROLLO REALE PRESSIONE
             var realPressure = "0/0"
             val cPress = database.rawQuery("SELECT systolic, diastolic FROM pressure WHERE timestamp = ?", arrayOf(ts.toString()))
             if (cPress.moveToFirst()) {
@@ -147,16 +143,25 @@ class AwsSyncWorker(
             }
             cPress.close()
 
-            // Impacchetta l'oggetto con i dati effettivi e fittizi dello Shimmer
+            val mockAlert = when {
+                realBpm > 0 && (realBpm < 50 || realBpm > 100) -> "heart_rate_anomaly"
+                realSpo2 > 0 && realSpo2 < 92 -> "hypoxemia_anomaly"
+                else -> "normal"
+            }
+
             val record = AwsRecord(
                 userId = uId,
-                x = 0.05,
-                y = 0.03,
-                z = 9.65,
-                activity = "sitting",
+                x = 0.12,
+                y = 0.45,
+                z = 9.81,
+                activity = "Walking",
                 heartRate = realBpm,
                 spo2 = realSpo2,
                 bloodPressure = realPressure,
+                latitude = 39.2983,
+                longitude = 16.2530,
+                steps = 1540,
+                alert = mockAlert,
                 timestamp = isoFormat.format(Date(ts))
             )
             list.add(record)
