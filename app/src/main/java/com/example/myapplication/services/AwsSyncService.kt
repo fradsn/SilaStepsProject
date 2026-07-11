@@ -244,10 +244,13 @@ class AwsSyncService : Service() {
                 )
                 list.add(fallbackRecord)
 
+                database.close()
+
                 // Ritorniamo il record generato. NON aggiorniamo lastSyncTimestamp con currentNowMs
                 // per evitare di saltare future letture reali se l'orologio di sistema diverge dal DB.
                 return Pair(list, lastTimestamp)
             } else {
+                database.close()
                 // Se non c'è nessun allarme e non ci sono record, non fare nulla
                 return Pair(emptyList(), lastTimestamp)
             }
@@ -299,6 +302,8 @@ class AwsSyncService : Service() {
             list.add(record)
         }
 
+        database.close()
+
         // Applica il tipo di allarme all'ultimo record inserito del batch reale
         if (forcedAlert != null && list.isNotEmpty()) {
             val lastIndex = list.size - 1
@@ -335,8 +340,14 @@ class AwsSyncService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        super.onDestroy()
         serviceScope.cancel()
         Log.d(TAG, "AwsSyncService Destroyed.")
+        super.onDestroy()
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        Log.d(TAG, "Chiusura da Task Manager")
+        stopSelf()
     }
 }

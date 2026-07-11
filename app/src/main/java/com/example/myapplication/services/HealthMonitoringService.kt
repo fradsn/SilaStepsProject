@@ -443,10 +443,16 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        super.onDestroy()
         stopAutomatedCycle()
         MotionSessionManager.removeObserver(this)
         Log.d(TAG, "Health Monitoring Service Destroyed")
+        super.onDestroy()
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        Log.d(TAG, "Chiusura da Task Manager")
+        stopSelf()
     }
 
     private fun createNotification(): Notification {
