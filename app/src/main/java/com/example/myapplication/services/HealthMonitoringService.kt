@@ -32,8 +32,8 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
     // Configurazioni intervalli (in Millisecondi)
     private val SPO2_WINDOW = 30 * 1000L
     private val GAP_WINDOW = 5 * 1000L
-    private val VITAL_VALIDITY_WINDOW = 5 * 60 * 1000L   // Finestra di tolleranza di 5 minuti per i dati dell'anello
-
+    private val VITAL_VALIDITY_WINDOW = 5 * 60 * 1000L   // Finestra di tolleranza per ossigeno
+    private val VITAL_VALIDITY_WINDOWBPM =  60 * 1000L  // Finestra di tolleranza per BPM
     // Variabili di cache per la fusione dei dati (Data Fusion)
     private var currentActivity: String = "UNKNOWN"
     private var lastBpm: Int? = null
@@ -156,11 +156,22 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
     // =====================================================================================
     // MULTI-MODAL DATA FUSION ALERTING MODULE
     // =====================================================================================
+
     private fun checkAlertingLogic() {
         val now = System.currentTimeMillis()
         val activity = currentActivity
 
         Log.d(TAG, "[LOG-ALERT] Pipeline evaluation started. Current Context Activity: '$activity'")
+
+        // LEGGE L'INTERVALLO SCELTO DALL'UTENTE (Default 200s se non trova nulla)
+        val sharedPref = getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
+        val currentBpmWindowMs = sharedPref.getLong("auto_bpm_window_ms", 200 * 1000L)
+
+        // CALCOLO DINAMICO FINESTRA OSSIGENO:
+        // Un ciclo intero dura: bpmWindow + spo2Window (30s) + 2*gap (10s).
+        // Diamo una tolleranza pari a 1.5 volte la durata del ciclo completo (flessibile ma sicuro).
+        val totalCycleTimeMs = currentBpmWindowMs + SPO2_WINDOW + (GAP_WINDOW * 2)
+        val dynamicOxygenValidityWindow = (totalCycleTimeMs * 1.5).toLong()
 
         // 1. VALUTAZIONE CONTRASTO BATTITO CARDIACO (BPM) + ATTIVITÀ FISICA
         val bpm = lastBpm
@@ -168,9 +179,9 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
             val bpmAgeMs = now - lastBpmTimestamp
             val bpmAgeSec = bpmAgeMs / 1000
 
-            Log.d(TAG, "[LOG-ALERT] Cached BPM: $bpm | Age: ${bpmAgeSec}s (Max Allowed: ${VITAL_VALIDITY_WINDOW / 1000}s)")
+            Log.d(TAG, "[LOG-ALERT] Cached BPM: $bpm | Age: ${bpmAgeSec}s (Max Allowed: ${VITAL_VALIDITY_WINDOWBPM / 1000}s)")
 
-            if (bpmAgeMs < VITAL_VALIDITY_WINDOW) {
+            if (bpmAgeMs < VITAL_VALIDITY_WINDOWBPM) {
                 val cooldownLeft = ALERT_COOLDOWN - (now - lastBpmAlertTime)
 
                 if (cooldownLeft <= 0) {
@@ -213,19 +224,22 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
                     Log.v(TAG, "[LOG-ALERT] BPM Alert throttled by anti-spam. Cooldown ends in ${cooldownLeft / 1000}s.")
                 }
             } else {
-                Log.w(TAG, "[LOG-ALERT] BPM evaluation SKIPPED: Data is too old (${bpmAgeSec}s > 300s).")
+                Log.w(TAG, "[LOG-ALERT] BPM evaluation SKIPPED: Data is too old (${bpmAgeSec}s > ${VITAL_VALIDITY_WINDOWBPM / 1000}s).")
             }
         } else {
             Log.d(TAG, "[LOG-ALERT] BPM evaluation SKIPPED: No ring data has been received yet during this session.")
         }
 
-        // 2. VALUTAZIONE CONTRASTO SATURAZIONE OSSIGENO (SpO2) + ATTIVITÀ FISICA
+        // 2. VALUTAZIONE CONTRASTO SATURAZIONE OSSIGENO (SpO2) + ATTIVITÀ FISICA (ORA DINAMICA)
         val o2 = lastSpO2
         if (o2 != null) {
             val o2AgeMs = now - lastSpO2Timestamp
-            Log.d(TAG, "[LOG-ALERT] Cached SpO2: $o2% | Age: ${o2AgeMs / 1000}s")
+            val o2AgeSec = o2AgeMs / 1000
+            val maxAllowedO2AgeSec = dynamicOxygenValidityWindow / 1000
 
-            if (o2AgeMs < VITAL_VALIDITY_WINDOW) {
+            Log.d(TAG, "[LOG-ALERT] Cached SpO2: $o2% | Age: ${o2AgeSec}s (Dynamic Max Allowed: ${maxAllowedO2AgeSec}s)")
+
+            if (o2AgeMs < dynamicOxygenValidityWindow) {
                 val cooldownLeft = ALERT_COOLDOWN - (now - lastSpO2AlertTime)
 
                 if (o2 < 92) {
@@ -242,7 +256,7 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, M
                     Log.d(TAG, "[LOG-ALERT] SpO2 value ($o2%) is optimal and safe.")
                 }
             } else {
-                Log.w(TAG, "[LOG-ALERT] SpO2 evaluation SKIPPED: Data is too old.")
+                Log.w(TAG, "[LOG-ALERT] SpO2 evaluation SKIPPED: Data is too old (${o2AgeSec}s > ${maxAllowedO2AgeSec}s).")
             }
         }
     }
