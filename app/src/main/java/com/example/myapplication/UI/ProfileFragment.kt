@@ -203,14 +203,27 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
 
         val sharedPref = requireContext().getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
 
-        val options = arrayOf("1 Minute", "2 Minutes", "3 Minutes 20s (Default)", "5 Minutes")
-        val valuesInMs = arrayOf(1 * 60 * 1000L, 2 * 60 * 1000L, 200 * 1000L, 5 * 60 * 1000L)
+        // Opzioni aggiornate come richiesto, eliminando i 5 minuti
+        val options = arrayOf(
+            "80s",
+            "140s",
+            "200s (Default)"
+        )
+
+        // Corrispettivi matematici esatti espressi in millisecondi (ms)
+        val valuesInMs = arrayOf(
+            80 * 1000L,   // 1m e 20s = 80 secondi
+            140 * 1000L,  // 2m e 20s = 140 secondi
+            200 * 1000L   // 3m e 20s = 200 secondi (Default iniziale)
+        )
 
         val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, options).apply {
             setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         }
         spinnerBpmDuration.adapter = adapter
 
+        // Recupera la vecchia durata salvata: se non trova nulla o se corrisponde a un vecchio valore rimosso (tipo i 5 minuti),
+        // assegna l'indice 2, ovvero il default di "3 Minutes 20s" (200.000 ms)
         val savedDurationMs = sharedPref.getLong("auto_bpm_window_ms", 200 * 1000L)
         val defaultIndex = valuesInMs.indexOf(savedDurationMs).let { if (it == -1) 2 else it }
         spinnerBpmDuration.setSelection(defaultIndex)

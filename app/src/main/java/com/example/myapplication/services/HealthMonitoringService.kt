@@ -14,27 +14,44 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.myapplication.BT.ring.Decoder
 import com.example.myapplication.BT.ring.SmartRingManager
+import com.example.myapplication.Motion.session.MotionSessionManager
+import com.example.myapplication.Motion.session.MotionUiState
+import com.example.myapplication.MyApplication
 import com.example.myapplication.R
+import com.example.myapplication.UI.AlertPopupActivity
 
-class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener {
+class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener, MotionSessionManager.Observer {
 
     private lateinit var gestoreStatistiche: GestoreStatistiche
     private var ringManager: SmartRingManager? = null
 
-    // Gestione temporizzatore ciclico a catena continua
+    // Gestione temporizzatore ciclico automatico dell'anello
     private val autoMeasureHandler = Handler(Looper.getMainLooper())
     private var isAutoMeasuring = false
 
-    // Configurazione intervalli (espressi in Millisecondi)
-    private val SPO2_WINDOW = 30 * 1000L                // Durata singola misurazione SpO2: 30 secondi (30s)
-    private val GAP_WINDOW = 5 * 1000L                  // Secondi di tolleranza per pulizia hardware: 5 secondi (5s)
+    // Configurazioni intervalli (in Millisecondi)
+    private val SPO2_WINDOW = 30 * 1000L
+    private val GAP_WINDOW = 5 * 1000L
+    private val VITAL_VALIDITY_WINDOW = 5 * 60 * 1000L   // Finestra di tolleranza di 5 minuti per i dati dell'anello
+
+    // Variabili di cache per la fusione dei dati (Data Fusion)
+    private var currentActivity: String = "UNKNOWN"
+    private var lastBpm: Int? = null
+    private var lastBpmTimestamp: Long = 0L
+    private var lastSpO2: Int? = null
+    private var lastSpO2Timestamp: Long = 0L
+
+    // Meccanismo anti-spam per le notifiche
+    private var lastBpmAlertTime = 0L
+    private var lastSpO2AlertTime = 0L
+    private val ALERT_COOLDOWN = 90 * 1000L             // Aspetta almeno 90 secondi prima di ripetere la stessa allerta
 
     companion object {
         private const val TAG = "HEALTH_SERVICE"
         private const val NOTIFICATION_ID = 2002
         private const val CHANNEL_ID = "health_monitoring_channel"
+        private const val EMERGENCY_CHANNEL_ID = "health_emergency_channel" // Canale dedicato alle emergenze acustiche
 
-        // Actions custom per l'attivazione/disattivazione ciclica
         const val ACTION_START_AUTO = "START_AUTO_MEASUREMENT"
         const val ACTION_STOP_AUTO = "STOP_AUTO_MEASUREMENT"
 
@@ -45,15 +62,19 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener {
 
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "Servizio di Monitoraggio Creato")
+        Log.d(TAG, "Health Monitoring Service Created")
         gestoreStatistiche = GestoreStatistiche.getInstance(this)
 
         ringManager = SmartRingManager.getActiveInstance()
         ringManager?.updateListener(this)
+
+        // Sostituito il mock con il vero Observer di MotionSessionManager
+        Log.d(TAG, "Connecting as Observer to MotionSessionManager...")
+        MotionSessionManager.addObserver(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "Servizio attivo. Action ricevuta: ${intent?.action}")
+        Log.d(TAG, "Service active. Received Action: ${intent?.action}")
 
         when (intent?.action) {
             ACTION_START_AUTO -> startAutomatedCycle()
@@ -61,7 +82,7 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener {
             else -> {
                 val macAddress = intent?.getStringExtra("MAC_ADDRESS")
                 if (!macAddress.isNullOrBlank()) {
-                    Log.d(TAG, "Ricevuto MAC_ADDRESS da connettere: $macAddress. Inizializzo istanza.")
+                    Log.d(TAG, "Received MAC_ADDRESS to connect: $macAddress. Initializing instance.")
                     ringManager = SmartRingManager.getInstance(this, macAddress, this)
                     ringManager?.connect(this)
                 } else {
@@ -76,53 +97,280 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener {
     }
 
     // =====================================================================================
-    // CORE LOGIC: PIPELINE DI MISURAZIONE CONTINUA ADATTIVA E DINAMICA (BPM -> GAP -> SpO2 -> GAP -> LOOP)
+    // REAL SHIMMER HARDWARE OBSERVER CALLBACK LISTENER
+    // =====================================================================================
+    override fun onMotionStateChanged(state: MotionUiState) {
+        val incomingActivity = state.currentActivity.lowercase().trim()
+
+        if (incomingActivity.isNotEmpty() && incomingActivity != "unknown") {
+            this.currentActivity = incomingActivity
+            Log.d(TAG, "[LOG-SHIMMER] Activity context updated: '$currentActivity' (${state.confidencePercent}%). Evaluating alerts...")
+            checkAlertingLogic()
+        }
+    }
+
+    // =====================================================================================
+    // REAL HARDWARE SMART RING VITAL PARAMETERS RECEIVER
+    // =====================================================================================
+    override fun onDataReceived(result: Decoder.DecodedResult) {
+        val now = System.currentTimeMillis()
+
+        when (result.type) {
+            "BPM" -> {
+                if (result.value > 0) {
+                    Log.i(TAG, "[LOG-HARDWARE] Real Smart Ring captured BPM: ${result.value}")
+                    gestoreStatistiche.salvaBpm(result.value)
+
+                    lastBpm = result.value
+                    lastBpmTimestamp = now
+                    checkAlertingLogic()
+                }
+            }
+            "SPO2" -> {
+                if (result.value > 0) {
+                    Log.i(TAG, "[LOG-HARDWARE] Real Smart Ring captured SpO2: ${result.value}%")
+                    gestoreStatistiche.salvaO2(result.value)
+
+                    lastSpO2 = result.value
+                    lastSpO2Timestamp = now
+                    checkAlertingLogic()
+                }
+            }
+            "BP" -> {
+                if (result.sys > 0) {
+                    Log.d(TAG, "[LOG-HARDWARE] Real Smart Ring captured Blood Pressure: ${result.sys}/${result.dia}")
+                    gestoreStatistiche.salvaPressione(result.sys, result.dia)
+                }
+            }
+            "BATTERY" -> {
+                if (result.battery >= 0) {
+                    val chargingIcon = if (result.chargingStatus == 0x02) "⚡ " else ""
+                    val batteryText = "Battery: $chargingIcon${result.battery}%"
+                    val sharedPref = getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
+                    sharedPref.edit().putString("last_battery_level", batteryText).apply()
+                }
+            }
+        }
+    }
+
+    // =====================================================================================
+    // MULTI-MODAL DATA FUSION ALERTING MODULE
+    // =====================================================================================
+    private fun checkAlertingLogic() {
+        val now = System.currentTimeMillis()
+        val activity = currentActivity
+
+        Log.d(TAG, "[LOG-ALERT] Pipeline evaluation started. Current Context Activity: '$activity'")
+
+        // 1. VALUTAZIONE CONTRASTO BATTITO CARDIACO (BPM) + ATTIVITÀ FISICA
+        val bpm = lastBpm
+        if (bpm != null) {
+            val bpmAgeMs = now - lastBpmTimestamp
+            val bpmAgeSec = bpmAgeMs / 1000
+
+            Log.d(TAG, "[LOG-ALERT] Cached BPM: $bpm | Age: ${bpmAgeSec}s (Max Allowed: ${VITAL_VALIDITY_WINDOW / 1000}s)")
+
+            if (bpmAgeMs < VITAL_VALIDITY_WINDOW) {
+                val cooldownLeft = ALERT_COOLDOWN - (now - lastBpmAlertTime)
+
+                if (cooldownLeft <= 0) {
+                    Log.d(TAG, "[LOG-ALERT] BPM Anti-spam filter PASSED. Testing condition thresholds for '$activity'...")
+                    when (activity) {
+                        "sitting", "standing" -> {
+                            if (bpm < 50) {
+                                Log.w(TAG, "[LOG-TRIGGER] Threshold MATCHED: Bradycardia at rest ($bpm < 50)!")
+                                triggerAlertNotification("Bradycardia Detected", "Critical low heart rate ($bpm BPM) found during rest ($activity).")
+                                lastBpmAlertTime = now
+                            } else if (bpm > 100) {
+                                Log.w(TAG, "[LOG-TRIGGER] Threshold MATCHED: Tachycardia at rest ($bpm > 100)!")
+                                triggerAlertNotification("Tachycardia at Rest", "High heart rate ($bpm BPM) detected while stationary ($activity).")
+                                lastBpmAlertTime = now
+                            } else {
+                                Log.d(TAG, "[LOG-ALERT] BPM $bpm is safe within range [50-100] for '$activity'.")
+                            }
+                        }
+                        "walking" -> {
+                            if (bpm > 135) {
+                                Log.w(TAG, "[LOG-TRIGGER] Threshold MATCHED: High BPM during walk ($bpm > 135)!")
+                                triggerAlertNotification("Abnormal Heart Rate", "Elevated heart rate ($bpm BPM) captured during a casual walk.")
+                                lastBpmAlertTime = now
+                            } else {
+                                Log.d(TAG, "[LOG-ALERT] BPM $bpm is safe (<135) for walking.")
+                            }
+                        }
+                        "jogging" -> {
+                            if (bpm > 175) {
+                                Log.w(TAG, "[LOG-TRIGGER] Threshold MATCHED: Ceiling breached during jog ($bpm > 175)!")
+                                triggerAlertNotification("Cardio Safety Alert", "Maximum safety ceiling breached: $bpm BPM while jogging!")
+                                lastBpmAlertTime = now
+                            } else {
+                                Log.d(TAG, "[LOG-ALERT] BPM $bpm is safe (<175) for jogging.")
+                            }
+                        }
+                        else -> Log.d(TAG, "[LOG-ALERT] Activity '$activity' does not have active BPM constraints.")
+                    }
+                } else {
+                    Log.v(TAG, "[LOG-ALERT] BPM Alert throttled by anti-spam. Cooldown ends in ${cooldownLeft / 1000}s.")
+                }
+            } else {
+                Log.w(TAG, "[LOG-ALERT] BPM evaluation SKIPPED: Data is too old (${bpmAgeSec}s > 300s).")
+            }
+        } else {
+            Log.d(TAG, "[LOG-ALERT] BPM evaluation SKIPPED: No ring data has been received yet during this session.")
+        }
+
+        // 2. VALUTAZIONE CONTRASTO SATURAZIONE OSSIGENO (SpO2) + ATTIVITÀ FISICA
+        val o2 = lastSpO2
+        if (o2 != null) {
+            val o2AgeMs = now - lastSpO2Timestamp
+            Log.d(TAG, "[LOG-ALERT] Cached SpO2: $o2% | Age: ${o2AgeMs / 1000}s")
+
+            if (o2AgeMs < VITAL_VALIDITY_WINDOW) {
+                val cooldownLeft = ALERT_COOLDOWN - (now - lastSpO2AlertTime)
+
+                if (o2 < 92) {
+                    if (cooldownLeft <= 0) {
+                        Log.w(TAG, "[LOG-TRIGGER] Threshold MATCHED: Low oxygen ($o2 < 92%)!")
+                        val hazardLevel = if (activity == "jogging") "Monitor closely (Exercise Induced Hypoxia)" else "CRITICAL RISK (Hypoxemia at rest!)"
+
+                        triggerAlertNotification("Low Blood Oxygen Level", "SpO2 dropped down to $o2% during $activity. Status: $hazardLevel")
+                        lastSpO2AlertTime = now
+                    } else {
+                        Log.v(TAG, "[LOG-ALERT] SpO2 Alert throttled by anti-spam. Cooldown ends in ${cooldownLeft / 1000}s.")
+                    }
+                } else {
+                    Log.d(TAG, "[LOG-ALERT] SpO2 value ($o2%) is optimal and safe.")
+                }
+            } else {
+                Log.w(TAG, "[LOG-ALERT] SpO2 evaluation SKIPPED: Data is too old.")
+            }
+        }
+    }
+
+    // =====================================================================================
+    // DISPATCHER ALLERTE: EMISSIONE ACUSTICA E LANCIO ATTIVITÀ POPUP SU SCHERMO (3 CASI)
+    // =====================================================================================
+    private fun triggerAlertNotification(title: String, message: String) {
+        Log.w(TAG, "⚠️ [ALERT DISPATCHED TO SYSTEM] Title: '$title' | Message: '$message'")
+
+        val now = System.currentTimeMillis()
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        // 1. CONFIGURAZIONE DEL CANALE AD ALTA IMPORTANZA CON AUDIO DA SVEGLIA (Android 8.0+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val emergencyChannel = NotificationChannel(
+                EMERGENCY_CHANNEL_ID,
+                "Health Emergency Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Critical vital signs and health danger alerts"
+                enableLights(true)
+                enableVibration(true)
+                setBypassDnd(true) // Passa sopra la modalità "Non Disturbare" se attiva
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            }
+            manager.createNotificationChannel(emergencyChannel)
+        }
+
+        // 2. PREPARAZIONE DELL'INTENT PER IL POPUP GRAFICO
+        val popupIntent = Intent(this, AlertPopupActivity::class.java).apply {
+            putExtra("EXTRA_TITLE", title)
+            putExtra("EXTRA_MESSAGE", message)
+            putExtra("EXTRA_TIMESTAMP", now)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+
+        val fullScreenPendingIntent = android.app.PendingIntent.getActivity(
+            this,
+            now.toInt(),
+            popupIntent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // 3. COSTRUZIONE NOTIFICA (Configurata con priorità massima e categoria CALL/ALARM)
+        val alertNotification = NotificationCompat.Builder(this, EMERGENCY_CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setDefaults(Notification.DEFAULT_ALL)
+            .setAutoCancel(true)
+            .setOngoing(true)
+            .setFullScreenIntent(fullScreenPendingIntent, true) // CASO 1: Schermo Spento
+            .setContentIntent(fullScreenPendingIntent)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+
+        manager.notify(now.toInt(), alertNotification)
+
+        // 4. VERIFICA DELLO STATO HARDWARE DELLO SCHERMO
+        val powerManager = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        val isInteractive = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT_WATCH) {
+            powerManager.isInteractive
+        } else {
+            @Suppress("DEPRECATION")
+            powerManager.isScreenOn
+        }
+
+        if (isInteractive) {
+            if (MyApplication.isAppInForeground()) {
+                // CASO 2: App Attiva (In Foreground) -> Apertura diretta istantanea
+                Log.d(TAG, "[LOG-ALERT] Screen is ON and App is in FOREGROUND. Launching popup Activity directly.")
+                startActivity(popupIntent)
+            } else {
+                // CASO 3: App in Background (Schermo Acceso) -> Richiede autorizzazione overlay speciale
+                Log.d(TAG, "[LOG-ALERT] Screen is ON but App is in BACKGROUND. Checking SYSTEM_ALERT_WINDOW permission...")
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && android.provider.Settings.canDrawOverlays(this)) {
+                    Log.w(TAG, "[LOG-ALERT] Overlay permission granted! Forcing direct background startActivity overlay.")
+                    popupIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                    startActivity(popupIntent)
+                } else {
+                    Log.e(TAG, "[LOG-ALERT] Overlay permission MISSING! Cannot force window. Falling back to Settings routing automation.")
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        val settingsIntent = Intent(
+                            android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            android.net.Uri.parse("package:$packageName")
+                        ).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(settingsIntent)
+                    }
+                }
+            }
+        } else {
+            Log.d(TAG, "[LOG-ALERT] Screen is OFF. The system fullScreenIntent will natively wake up the display.")
+        }
+    }
+
+    // =====================================================================================
+    // GESTIONE METODI ESISTENTI DELLO SMART RING (INVARIATI)
     // =====================================================================================
     private val autoMeasurementRunnable = object : Runnable {
         override fun run() {
             if (!isAutoMeasuring) return
-
             if (ringManager?.isConnected() == true) {
-                // Legge in tempo reale la durata dei BPM configurata dall'utente nel Profilo
                 val sharedPref = getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
-                val dynamicBpmWindow = sharedPref.getLong("auto_bpm_window_ms", 200 * 1000L) // Default: 3m 20s
-
-                Log.d(TAG, "[AUTO-CYCLE] Inizio Sequenza: Fase 1 - Avvio BPM per ${dynamicBpmWindow / 1000} secondi")
+                val dynamicBpmWindow = sharedPref.getLong("auto_bpm_window_ms", 200 * 1000L)
                 ringManager?.startHeartRateMeasurement()
-
-                // 1. Scaduti i minuti dinamici di BPM, fermiamo l'anello per la prima sosta di tolleranza (5 secondi)
                 autoMeasureHandler.postDelayed({
                     if (!isAutoMeasuring) return@postDelayed
-                    Log.d(TAG, "[AUTO-CYCLE] Pausa di Tolleranza: Stop temporaneo prima di SpO2 (5 secondi)")
                     ringManager?.stopAllMeasurements()
-
-                    // 2. Passati i 5 secondi di sosta, avviamo l'Ossigeno (SpO2) per 30 secondi
                     autoMeasureHandler.postDelayed({
                         if (!isAutoMeasuring) return@postDelayed
-                        Log.d(TAG, "[AUTO-CYCLE] Fase 2 - Avvio SpO2 isolato (30 secondi)")
                         ringManager?.startSpO2Measurement()
-
-                        // 3. Scaduti i 30 secondi di SpO2, fermiamo l'anello per la seconda sosta (5 secondi)
                         autoMeasureHandler.postDelayed({
                             if (!isAutoMeasuring) return@postDelayed
-                            Log.d(TAG, "[AUTO-CYCLE] Pausa di Tolleranza: Stop temporaneo prima di ricominciare (5 secondi)")
                             ringManager?.stopAllMeasurements()
-
-                            // 4. Passati gli ultimi 5 secondi di tolleranza, la catena ricomincia subito da capo!
                             autoMeasureHandler.postDelayed({
                                 if (!isAutoMeasuring) return@postDelayed
-                                Log.d(TAG, "[AUTO-CYCLE] Macro-ciclo completato. Il loop riparte immediatamente.")
-                                this.run() // Richiamo ricorsivo per iniziare il nuovo ciclo con la finestra aggiornata
+                                this.run()
                             }, GAP_WINDOW)
-
                         }, SPO2_WINDOW)
-
                     }, GAP_WINDOW)
-
-                }, dynamicBpmWindow) // <--- Finestra temporale dinamica ereditata dallo Spinner
-
+                }, dynamicBpmWindow)
             } else {
-                Log.w(TAG, "[AUTO-CYCLE] Tentativo fallito: Smart Ring non connesso. Riprovo tra 10 secondi.")
                 autoMeasureHandler.postDelayed(this, 10000L)
             }
         }
@@ -133,15 +381,12 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener {
             if (!isAutoMeasuring) {
                 isAutoMeasuring = true
                 isAutoMeasuringActive = true
-                Log.d(TAG, "Inizializzazione routine di misurazione ciclica dinamica avviata.")
                 autoMeasureHandler.post(autoMeasurementRunnable)
             }
         } else {
-            Log.w(TAG, "Abortito startAutomatedCycle: l'anello risulta disconnesso.")
             isAutoMeasuring = false
             isAutoMeasuringActive = false
             autoMeasureHandler.removeCallbacksAndMessages(null)
-
             val sharedPref = getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
             sharedPref.edit().putBoolean("auto_measurement_enabled", false).apply()
         }
@@ -151,52 +396,12 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener {
         if (isAutoMeasuring) {
             isAutoMeasuring = false
             isAutoMeasuringActive = false
-            Log.d(TAG, "Routine di misurazione ciclica interrotta.")
             autoMeasureHandler.removeCallbacksAndMessages(null)
             ringManager?.stopAllMeasurements()
         }
     }
 
-    // =====================================================================================
-    // RICEZIONE E SALVATAGGIO DEI PARAMETRI VITALI
-    // =====================================================================================
-    override fun onDataReceived(result: Decoder.DecodedResult) {
-        Log.d(TAG, "Dato hardware intercettato nel Servizio: Tipo=${result.type}")
-
-        when (result.type) {
-            "BPM" -> {
-                if (result.value > 0) {
-                    gestoreStatistiche.salvaBpm(result.value)
-                }
-            }
-            "SPO2" -> {
-                if (result.value > 0) {
-                    gestoreStatistiche.salvaO2(result.value)
-                    Log.d(TAG, "Service ha salvato SpO2: ${result.value}")
-                }
-            }
-            "BP" -> {
-                if (result.sys > 0) {
-                    gestoreStatistiche.salvaPressione(result.sys, result.dia)
-                    Log.d(TAG, "Service ha salvato Pressione: ${result.sys}/${result.dia}")
-                }
-            }
-            "BATTERY" -> {
-                if (result.battery >= 0) {
-                    val chargingIcon = if (result.chargingStatus == 0x02) "⚡ " else ""
-                    val batteryText = "Battery: $chargingIcon${result.battery}%"
-
-                    val sharedPref = getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
-                    sharedPref.edit().putString("last_battery_level", batteryText).apply()
-
-                    Log.d(TAG, "Batteria aggiornata dal Service e salvata nelle Prefs: $batteryText")
-                }
-            }
-        }
-    }
-
     override fun onConnected() {
-        Log.d(TAG, "Smart Ring connesso al Servizio")
         val sharedPref = getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
         if (sharedPref.getBoolean("auto_measurement_enabled", false)) {
             startAutomatedCycle()
@@ -204,41 +409,31 @@ class HealthMonitoringService : Service(), SmartRingManager.SmartRingListener {
     }
 
     override fun onDisconnected() {
-        Log.d(TAG, "Smart Ring disconnesso dal Servizio")
         val sharedPref = getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
         sharedPref.edit().putString("last_battery_level", "Battery: --").apply()
-
         autoMeasureHandler.removeCallbacksAndMessages(null)
     }
 
-    override fun onError(msg: String) {
-        Log.e(TAG, "Errore Smart Ring intercettato nel Servizio: $msg")
-    }
-
+    override fun onError(msg: String) { Log.e(TAG, "Smart Ring Error: $msg") }
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
         super.onDestroy()
         stopAutomatedCycle()
-        Log.d(TAG, "Servizio di Monitoraggio Distrutto")
+        // Rimozione pulita dell'Observer per prevenire leak di memoria
+        MotionSessionManager.removeObserver(this)
+        Log.d(TAG, "Health Monitoring Service Destroyed")
     }
 
     private fun createNotification(): Notification {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Monitoraggio Salute Realtime",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Mantiene attiva la registrazione da Smart Ring e Shimmer"
-            }
+            val channel = NotificationChannel(CHANNEL_ID, "Realtime Health Monitoring", NotificationManager.IMPORTANCE_LOW)
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
         }
-
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Monitoraggio Sanitario Attivo")
-            .setContentText("Registrazione parametri vitali e attività in corso...")
+            .setContentTitle("Health Monitoring System Active")
+            .setContentText("Recording vital signs and fusion alerts active...")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)

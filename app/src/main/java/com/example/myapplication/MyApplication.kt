@@ -1,7 +1,10 @@
 package com.example.myapplication
 
 import android.app.Application
+import android.app.Activity
 import android.icu.util.Calendar
+import android.os.Bundle
+import android.util.Log
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
@@ -11,14 +14,50 @@ import com.example.myapplication.workers.AwsSyncWorker
 import com.example.myapplication.workers.DailyCleanupWorker
 import java.util.concurrent.TimeUnit
 
-class MyApplication : Application() {
+class MyApplication : Application(), Application.ActivityLifecycleCallbacks {
+
+    companion object {
+        private var runningActivities = 0
+
+        // Metodo statico richiamato dal Service per capire se l'app è aperta o in background
+        fun isAppInForeground(): Boolean {
+            return runningActivities > 0
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
+        Log.d("MY_APP", "Application instance initialized.")
+
+        // Registra i callback globali per il monitoraggio dello stato della UI
+        registerActivityLifecycleCallbacks(this)
+
+        // Mantiene attive le tue logiche di sincronizzazione e pulizia preesistenti
         setupAwsSyncWorker()
         scheduleDailyCleanup()
     }
 
+    // =====================================================================================
+    // GESTIONE TRACCIAMENTO FOREGROUND / BACKGROUND PIPELINE
+    // =====================================================================================
+    override fun onActivityStarted(activity: Activity) {
+        runningActivities++
+    }
+
+    override fun onActivityStopped(activity: Activity) {
+        runningActivities--
+    }
+
+    // Metodi obbligatori dell'interfaccia inseriti senza rompere le logiche
+    override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+    override fun onActivityResumed(activity: Activity) {}
+    override fun onActivityPaused(activity: Activity) {}
+    override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+    override fun onActivityDestroyed(activity: Activity) {}
+
+    // =====================================================================================
+    // GESTIONE OPERAZIONI IN BACKGROUND ESISTENTI (WORKMANAGER - INVARIATI)
+    // =====================================================================================
     private fun setupAwsSyncWorker() {
         val workManager = WorkManager.getInstance(this)
 
