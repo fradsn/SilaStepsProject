@@ -41,7 +41,7 @@ class AwsSyncService : Service() {
         private const val NOTIFICATION_ID = 2005
         private const val CHANNEL_ID = "aws_sync_channel"
 
-        // Intervallo di sveglia del ciclo (5 Minuti espressi in Millisecondi)
+        // Intervallo di sveglia del ciclo impostato a 5 minuti
         private const val SYNC_INTERVAL_MS = 5 * 60 * 1000L
     }
 
@@ -56,7 +56,6 @@ class AwsSyncService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "AwsSyncService onStartCommand called.")
-        // Rende il servizio Sticky: se il sistema lo killa per RAM, lo riavvia appena possibile
         return START_STICKY
     }
 
@@ -69,7 +68,7 @@ class AwsSyncService : Service() {
                 } catch (e: Exception) {
                     Log.e(TAG, "Exception during active sync loop iteration", e)
                 }
-                // Si mette in pausa per 15 minuti prima del prossimo ciclo
+                // Si mette in pausa per 5 minuti prima del prossimo ciclo
                 delay(SYNC_INTERVAL_MS)
             }
         }
@@ -140,8 +139,8 @@ class AwsSyncService : Service() {
         while (cursorBpm.moveToNext()) { uniqueTimestamps.add(cursorBpm.getLong(0)) }
         cursorBpm.close()
 
-        // 2. Prendi i timestamp da 'o2' (Usa la query corretta leggendo il valore modificato)
-        val cursorO2 = database.rawQuery("SELECT value FROM o2 WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
+        // 2. Prendi i timestamp da 'o2'
+        val cursorO2 = database.rawQuery("SELECT timestamp FROM o2 WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
         while (cursorO2.moveToNext()) { uniqueTimestamps.add(cursorO2.getLong(0)) }
         cursorO2.close()
 
@@ -149,6 +148,16 @@ class AwsSyncService : Service() {
         val cursorPressure = database.rawQuery("SELECT timestamp FROM pressure WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
         while (cursorPressure.moveToNext()) { uniqueTimestamps.add(cursorPressure.getLong(0)) }
         cursorPressure.close()
+
+        // 4. Prendi i timestamp reali da 'prediction' (Storico Attività Shimmer)
+        val cursorPrediction = database.rawQuery("SELECT timestamp FROM prediction WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
+        while (cursorPrediction.moveToNext()) { uniqueTimestamps.add(cursorPrediction.getLong(0)) }
+        cursorPrediction.close()
+
+        // 5. Prendi i timestamp reali da 'position' (Storico GPS)
+        val cursorPosition = database.rawQuery("SELECT timestamp FROM position WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
+        while (cursorPosition.moveToNext()) { uniqueTimestamps.add(cursorPosition.getLong(0)) }
+        cursorPosition.close()
 
         if (uniqueTimestamps.isEmpty()) {
             return Pair(emptyList(), lastTimestamp)
@@ -161,43 +170,67 @@ class AwsSyncService : Service() {
             timeZone = TimeZone.getTimeZone("UTC")
         }
 
+        // Variabili di cache per la logica di Forward Filling
+        var lastKnownBpm = 0
+        var lastKnownSpo2 = 0
+        var lastKnownPressure = "0/0"
+        var lastKnownLatitude = 0.0
+        var lastKnownLongitude = 0.0
+        var lastKnownActivity = "UNKNOWN"
+
         for (ts in sortedTimestamps) {
-            var realBpm = 0
-            val cBpm = database.rawQuery("SELECT bpm FROM bpm WHERE timestamp = ?", arrayOf(ts.toString()))
-            if (cBpm.moveToFirst()) { realBpm = cBpm.getInt(0) }
+
+            // 1. Recupera l'ultimo dato utile per i BPM
+            val cBpm = database.rawQuery("SELECT bpm FROM bpm WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
+            if (cBpm.moveToFirst()) { lastKnownBpm = cBpm.getInt(0) }
             cBpm.close()
 
-            var realSpo2 = 0
-            val cO2 = database.rawQuery("SELECT value FROM o2 WHERE timestamp = ?", arrayOf(ts.toString()))
-            if (cO2.moveToFirst()) { realSpo2 = cO2.getInt(0) }
+            // 2. Recupera l'ultimo dato utile per lo SpO2
+            val cO2 = database.rawQuery("SELECT value FROM o2 WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
+            if (cO2.moveToFirst()) { lastKnownSpo2 = cO2.getInt(0) }
             cO2.close()
 
-            var realPressure = "0/0"
-            val cPress = database.rawQuery("SELECT systolic, diastolic FROM pressure WHERE timestamp = ?", arrayOf(ts.toString()))
+            // 3. Recupera l'ultimo dato utile per la Pressione
+            val cPress = database.rawQuery("SELECT systolic, diastolic FROM pressure WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
             if (cPress.moveToFirst()) {
-                realPressure = "${cPress.getInt(0)}/${cPress.getInt(1)}"
+                lastKnownPressure = "${cPress.getInt(0)}/${cPress.getInt(1)}"
             }
             cPress.close()
 
-            val mockAlert = when {
-                realBpm > 0 && (realBpm < 50 || realBpm > 100) -> "heart_rate_anomaly"
-                realSpo2 > 0 && realSpo2 < 92 -> "hypoxemia_anomaly"
+            // 4. Recupera lo storico reale del contesto dell'attività Shimmer
+            val cAct = database.rawQuery("SELECT activity FROM prediction WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
+            if (cAct.moveToFirst()) { lastKnownActivity = cAct.getString(0) }
+            cAct.close()
+
+            // 5. Recupera lo storico reale della Posizione GPS
+            val cPos = database.rawQuery("SELECT latitude, longitude FROM position WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
+            if (cPos.moveToFirst()) {
+                lastKnownLatitude = cPos.getDouble(0)
+                lastKnownLongitude = cPos.getDouble(1)
+            }
+            cPos.close()
+
+            // Classificazione realistica delle anomalie basata sui valori fusi correnti
+            val currentAlert = when {
+                lastKnownBpm > 0 && (lastKnownBpm < 50 || lastKnownBpm > 100) -> "heart_rate_anomaly"
+                lastKnownSpo2 > 0 && lastKnownSpo2 < 92 -> "hypoxemia_anomaly"
                 else -> "normal"
             }
 
+            // Impacchettamento definitivo dell'oggetto AwsRecord
             val record = AwsRecord(
                 userId = uId,
-                x = 0.12,
-                y = 0.45,
-                z = 9.81,
-                activity = "Walking",
-                heartRate = realBpm,
-                spo2 = realSpo2,
-                bloodPressure = realPressure,
-                latitude = 39.2983,
-                longitude = 16.2530,
-                steps = 1540,
-                alert = mockAlert,
+                x = 0.12,                               // PROVVISORIAMNETE FITTIZIO
+                y = 0.45,                               // PROVVISORIAMNETE FITTIZIO
+                z = 9.81,                               // PROVVISORIAMNETE FITTIZIO
+                activity = lastKnownActivity,           // REALE DA DB
+                heartRate = lastKnownBpm,               // REALE DA DB
+                spo2 = lastKnownSpo2,                   // REALE DA DB
+                bloodPressure = lastKnownPressure,       // REALE DA DB
+                latitude = lastKnownLatitude,           // REALE DA DB
+                longitude = lastKnownLongitude,         // REALE DA DB
+                steps = 1540,                           // PROVVISORIAMENTE FITTIZIO (Tabella non ancora creata)
+                alert = currentAlert,                   // DINAMICO SU PARAMETRI REALI
                 timestamp = isoFormat.format(Date(ts))
             )
             list.add(record)
@@ -225,7 +258,6 @@ class AwsSyncService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        // Cancella lo scope per evitare coroutine appese o memory leak
         serviceScope.cancel()
         Log.d(TAG, "AwsSyncService Destroyed.")
     }
