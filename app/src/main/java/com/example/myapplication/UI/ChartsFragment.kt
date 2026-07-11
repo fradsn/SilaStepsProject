@@ -1,29 +1,29 @@
 package com.example.myapplication.UI
 
 import android.content.Context
+import android.content.Context.MODE_PRIVATE
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Shader
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import com.example.myapplication.BT.ring.SmartRingManager
+import com.example.myapplication.Motion.session.MotionSessionManager
+import com.example.myapplication.R
 import com.example.myapplication.services.GestoreStatistiche
 import com.example.myapplication.services.TimeAxisFormatter
-import com.example.myapplication.Motion.session.MotionSessionManager
-import com.example.myapplication.Motion.session.MotionUiState
-import com.example.myapplication.BT.ring.SmartRingManager
-import com.example.myapplication.R
 import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.charts.PieChart
-import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.components.MarkerView
+import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
@@ -33,6 +33,13 @@ import com.github.mikephil.charting.data.PieEntry
 import com.github.mikephil.charting.formatter.PercentFormatter
 import com.github.mikephil.charting.highlight.Highlight
 import com.github.mikephil.charting.utils.MPPointF
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.BoundingBox
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polyline
 
 class ChartsFragment : Fragment() {
 
@@ -41,6 +48,7 @@ class ChartsFragment : Fragment() {
     private lateinit var O2Chart: LineChart
     private lateinit var pressureChart: LineChart
     private lateinit var stepsChart: LineChart
+    private lateinit var map: MapView
 
     private lateinit var tvCurrentBpm: TextView
     private lateinit var tvLastO2: TextView
@@ -50,6 +58,7 @@ class ChartsFragment : Fragment() {
     private lateinit var cbLockScrollBpm: CheckBox
     private lateinit var cbLockScrollO2: CheckBox
     private lateinit var cbLockScrollPressure: CheckBox
+    private lateinit var cbEnableHistory: CheckBox
 
     private val activityLabels = listOf("Walking", "Jogging", "Sitting", "Standing")
 
@@ -68,18 +77,33 @@ class ChartsFragment : Fragment() {
     private var isBpmFirstLoad = true
     private var isO2FirstLoad = true
     private var isPressureFirstLoad = true
+    private var isPieChartFirstLoad = true
+    private var isStepsFirstLoad = true
 
     private val pollHandler = Handler(Looper.getMainLooper())
-    private val pollRunnable = object : Runnable {
+    private val pollRunnableStandard = object : Runnable {
         override fun run() {
-            aggiornaGrafici()
+            aggiornaGraficiStandard()
             pollHandler.postDelayed(this, 2000)
+        }
+    }
+    private val pollRunnableDelay = object : Runnable {
+        override fun run() {
+            aggiornaGraficiDelay()
+            pollHandler.postDelayed(this, 60 * 1000)
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        gestoreStatistiche = GestoreStatistiche.getInstance(requireContext())
+        val ctx = requireContext()
+        gestoreStatistiche = GestoreStatistiche.getInstance(ctx)
+
+        // 1) Inizializza OSMDroid PRIMA del layout
+        Configuration.getInstance().load(ctx, ctx.getSharedPreferences("osmdroid", MODE_PRIVATE))
+
+        // 2) Imposta un user-agent valido (fondamentale!)
+        Configuration.getInstance().userAgentValue = ctx.packageName
     }
 
     override fun onCreateView(
@@ -109,6 +133,11 @@ class ChartsFragment : Fragment() {
         setupPieChartStyle()
         refreshPieChart()
 
+        map = view.findViewById(R.id.map)
+        cbEnableHistory = view.findViewById(R.id.cbEnableHistory)
+        setupMap()
+        drawPath()
+
         stepsChart = view.findViewById(R.id.StepsChart)
         tvTotalSteps = view.findViewById(R.id.tvTotalSteps)
 
@@ -120,23 +149,100 @@ class ChartsFragment : Fragment() {
         cbLockScrollBpm.setOnCheckedChangeListener { _, isChecked -> if (!isChecked) caricaBpm() }
         cbLockScrollO2.setOnCheckedChangeListener { _, isChecked -> if (!isChecked) caricaO2() }
         cbLockScrollPressure.setOnCheckedChangeListener { _, isChecked -> if (!isChecked) caricaPressione() }
+        cbEnableHistory.setOnCheckedChangeListener { _, isChecked -> drawPath() }
+
 
         isBpmFirstLoad = true
         isO2FirstLoad = true
         isPressureFirstLoad = true
 
-        aggiornaGrafici()
-        pollHandler.post(pollRunnable)
+        aggiornaGraficiStandard()
+        aggiornaGraficiDelay()
+        pollHandler.post(pollRunnableStandard)
+        pollHandler.post ( pollRunnableDelay )
+    }
+
+    private fun drawPath() {
+        map.overlayManager.clear()
+
+        val positions = gestoreStatistiche.getPositions().sortedBy { it.timestamp }
+        if (positions.isEmpty()) {
+            map.invalidate()
+            return
+        }
+
+        // Converti in GeoPoint
+        var geoPoints: MutableList<GeoPoint> = mutableListOf()
+        if (!cbEnableHistory.isChecked){
+            val attuale = positions.last()
+            geoPoints.add(GeoPoint(attuale.latitude, attuale.longitude))
+        } else {
+            geoPoints = positions.map { GeoPoint(it.latitude, it.longitude) }.toMutableList()
+        }
+
+        // Disegna la polyline
+        val polyline = Polyline().apply {
+            outlinePaint.color = Color.BLUE
+            outlinePaint.strokeWidth = 5f
+            setPoints(geoPoints)
+        }
+        map.overlayManager.add(polyline)
+
+        // Aggiungi piccoli punti per ogni posizione
+        geoPoints.forEach { point ->
+            val marker = Marker(map).apply {
+                position = point
+                icon = ContextCompat.getDrawable(requireContext(), R.drawable.ic_dot)
+                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+            }
+            map.overlayManager.add(marker)
+        }
+
+        // Calcolo bounding box originale
+        val bounds = BoundingBox.fromGeoPoints(geoPoints)
+
+        // Padding per avere bordi bianchi
+        val padding = 0.0002   // puoi aumentare o diminuire
+        val paddedBounds = BoundingBox(
+            bounds.latNorth + padding,
+            bounds.lonEast + padding,
+            bounds.latSouth - padding,
+            bounds.lonWest - padding
+        )
+
+        // Zoom automatico sul percorso
+        map.zoomToBoundingBox(paddedBounds, true)
+
+        // Limite massimo allo zoom
+        val maxZoom = 18.0
+        if (map.zoomLevelDouble > maxZoom) {
+            map.controller.setZoom(maxZoom)
+        }
+
+        map.invalidate()
+    }
+
+    private fun setupMap() {
+        map.setTileSource(TileSourceFactory.MAPNIK)
+
+        map.setMultiTouchControls(false)
+        map.isClickable = false
+        map.isLongClickable = false
+
+        val controller = map.controller
+        controller.setZoom(15.0)
     }
 
     override fun onPause() {
         super.onPause()
-        pollHandler.removeCallbacks(pollRunnable)
+        pollHandler.removeCallbacks(pollRunnableStandard)
+        pollHandler.removeCallbacks(pollRunnableDelay)
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
-        pollHandler.removeCallbacks(pollRunnable)
+        pollHandler.removeCallbacks(pollRunnableStandard)
+        pollHandler.removeCallbacks(pollRunnableDelay)
     }
 
     private fun setupPieChartStyle() {
@@ -356,7 +462,7 @@ class ChartsFragment : Fragment() {
         }
     }
 
-    private fun aggiornaGrafici() {
+    private fun aggiornaGraficiStandard() {
         val ringManager = SmartRingManager.getActiveInstance()
         val activeMeasurement = ringManager?.getActiveMeasurementType()
 
@@ -373,8 +479,18 @@ class ChartsFragment : Fragment() {
             isPressureFirstLoad = false
         }
 
-        refreshPieChart()
-        aggiornaPassi()
+        if (isPieChartFirstLoad || MotionSessionManager.isShimmerConnected()){
+            refreshPieChart()
+            isPieChartFirstLoad = false
+        }
+    }
+
+    private fun aggiornaGraficiDelay() {
+        if (isStepsFirstLoad || MotionSessionManager.isShimmerConnected()){
+            aggiornaPassi()
+            isStepsFirstLoad = false
+        }
+        drawPath()
     }
 
     private fun aggiornaPassi() {
