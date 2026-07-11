@@ -59,6 +59,7 @@ class GestoreStatistiche private constructor(context: Context) {
     fun getO2() = o2Dao.getAll()
     fun getPrediction(): List<PredictionEntry> = predictionDao.getAll()
     fun getSteps() = stepDao.getAll()
+    fun getPositions() = positionDao.getAll()
 
     fun getActivityCount() = predictionDao.getActivityCount()
 

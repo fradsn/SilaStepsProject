@@ -1,0 +1,22 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="10dp"
+    android:height="10dp"
+    android:viewportWidth="10"
+    android:viewportHeight="10">
+
+    <!-- Bordo -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M5,0
+                          A5,5 0 1,1 5,10
+                          A5,5 0 1,1 5,0
+                          Z" />
+
+    <!-- Punto interno -->
+    <path
+        android:fillColor="#FF3B30"
+        android:pathData="M5,2
+                          A3,3 0 1,1 5,8
+                          A3,3 0 1,1 5,2
+                          Z" />
+</vector>
