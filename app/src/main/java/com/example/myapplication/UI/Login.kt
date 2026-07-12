@@ -65,6 +65,8 @@ class Login : AppCompatActivity() {
                         // FORZA IL RE-INDIRIZZAMENTO DEL DATABASE LOCALE SUL NUOVO UTENTE LOGGATO
                         GestoreStatistiche.resetInstance()
 
+                        pulisciDB()
+
                         // GPS tracking
                         startGPS()
 
@@ -98,24 +100,27 @@ class Login : AppCompatActivity() {
             // SE L'UTENTE È GIÀ LOGGATO IN CASH, PREPARIAMO IL SUO DATABASE DEDICATO PRIMA DI ENTRARE
             GestoreStatistiche.resetInstance()
 
-            val midnight = Calendar.getInstance().apply {
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }.timeInMillis
-
-            // Elimina i dati più vecchi della mezzanotte
-            gestoreStatistiche.deleteOlderThan(midnight)
+            pulisciDB()
 
             // GPS tracking
-            if (controllaPermessiGPS())
-                startGPS()
+            startGPS()
 
             val intentLogin = Intent(this, UserProfileActivity::class.java)
             startActivity(intentLogin)
             finish()
         }
+    }
+
+    private fun pulisciDB() {
+        val midnight = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+        // Elimina i dati più vecchi della mezzanotte
+        gestoreStatistiche.deleteOlderThan(midnight)
     }
 
     private fun controllaPermessiGPS(): Boolean {
@@ -153,7 +158,9 @@ class Login : AppCompatActivity() {
     }
 
     private fun startGPS() {
-        val intent = Intent(this, LocationService::class.java)
-        ContextCompat.startForegroundService(this, intent)
+        if (controllaPermessiGPS()) {
+            val intent = Intent(this, LocationService::class.java)
+            ContextCompat.startForegroundService(this, intent)
+        }
     }
 }

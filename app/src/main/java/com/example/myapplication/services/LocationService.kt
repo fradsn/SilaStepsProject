@@ -28,7 +28,7 @@ class LocationService : Service() {
     private lateinit var fusedLocationClient: FusedLocationProviderClient
 
     // Gestore del ciclo di vita delle coroutine legato al Service
-    private val serviceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var locationJob: Job? = null
 
     private lateinit var gestoreStatistiche: GestoreStatistiche
@@ -59,7 +59,7 @@ class LocationService : Service() {
 
         // Avvia il ciclo continuo se non è già attivo
         if (locationJob == null || locationJob?.isActive == false) {
-            startPeriodicLocationUpdates(30 * 1000L) // un minuto in millisecondi
+            startPeriodicLocationUpdates(30 * 1000L) // 30 sec
         }
         return START_STICKY
     }
@@ -75,24 +75,9 @@ class LocationService : Service() {
     }
 
     override fun onDestroy() {
-        Log.d("LocationService", "Chiusura richiesta. Invio ultimo dato...")
-
-        // Esegue l'ultimo invio solo se si hanno ancora le autorizzazioni corrette
-        if (haPermessiPosizione()) {
-            eseguiUltimoInvioBloccante()
-        }
-
         // Cancella le coroutine periodiche per evitare che continuino a girare
         serviceScope.cancel()
         super.onDestroy()
-    }
-
-    private fun eseguiUltimoInvioBloccante() {
-        runBlocking {
-            withTimeoutOrNull(5000L) { // Massimo 5 secondi di attesa
-                ottieniUltimaPosizione()
-            }
-        }
     }
 
     // Funzione per verificare se l'app possiede almeno uno dei permessi di localizzazione a runtime
@@ -101,41 +86,6 @@ class LocationService : Service() {
         val coarseLocation = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
 
         return fineLocation == PackageManager.PERMISSION_GRANTED || coarseLocation == PackageManager.PERMISSION_GRANTED
-    }
-
-    // Funzione "sospesa" sincrona per recuperare la posizione
-    @SuppressLint("MissingPermission")
-    private suspend fun ottieniUltimaPosizione() {
-        try {
-            // .await() converte il Task asincrono di Google in una chiamata sincrona sequenziale
-            // Primo tentativo: GPS
-            val gpsLocation = fusedLocationClient.getCurrentLocation(
-                Priority.PRIORITY_HIGH_ACCURACY,
-                null
-            ).await()
-
-            if (gpsLocation != null) {
-                onPosizioneValida(gpsLocation)
-                Log.d("Chiusura", "GPS OK: Lat: ${gpsLocation.latitude}, Lon: ${gpsLocation.longitude}")
-
-            } else {
-                // Fallback: Wi-Fi + celle
-                val fallbackLocation = fusedLocationClient.getCurrentLocation(
-                    Priority.PRIORITY_BALANCED_POWER_ACCURACY,
-                    null
-                ).await()
-
-                if (fallbackLocation != null) {
-                    onPosizioneValida(fallbackLocation)
-                    Log.d("Chiusura", "Fallback OK: ${fallbackLocation.latitude}, ${fallbackLocation.longitude}")
-                } else {
-                    Log.w("Chiusura", "Nessuna posizione disponibile.")
-                }
-            }
-
-        } catch (e: Exception) {
-            Log.e("Chiusura", "Errore durante l'ultimo invio urgente", e)
-        }
     }
 
     private fun startForegroundServiceNotification() {
