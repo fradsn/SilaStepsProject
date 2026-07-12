@@ -3,39 +3,58 @@ package com.example.myapplication.network
 import com.example.myapplication.Motion.model.AccelWindow
 import com.example.myapplication.Motion.pipeline.MotionPipeline
 import com.example.myapplication.Motion.tflite.LocalPredictionResult
+import java.util.concurrent.CopyOnWriteArrayList
 
-class IntercettaFinestrePredizione : MotionPipeline.Listener {
+// Data class per modellare il punto sintetico della finestra
+data class AccelDataPoint(
+    val timestamp: Long,
+    val avgX: Double,
+    val avgY: Double,
+    val avgZ: Double
+)
 
-    private lateinit var liste: Triple<List<Float>, List<Float>, List<Float>>
+class IntercettaFinestrePredizione private constructor() : MotionPipeline.Listener {
 
+    companion object {
+        @Volatile
+        private var INSTANCE: IntercettaFinestrePredizione? = null
 
-    override fun onShimmerConnected() {
-        TODO("Not yet implemented")
+        fun getInstance(): IntercettaFinestrePredizione {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: IntercettaFinestrePredizione().also { INSTANCE = it }
+            }
+        }
     }
 
-    override fun onShimmerDisconnected() {
-        TODO("Not yet implemented")
-    }
-
-    override fun onShimmerReady() {
-        TODO("Not yet implemented")
-    }
+    // Cache dinamica in memoria e thread-safe
+    private val cacheList = CopyOnWriteArrayList<AccelDataPoint>()
 
     override fun onWindowCreated(window: AccelWindow) {
         val matrix = window.data
 
-        val x = matrix.map { it[0] }
-        val y = matrix.map { it[1] }
-        val z = matrix.map { it[2] }
+        // Estrazione e calcolo delle medie della finestra attuale
+        val avgX = matrix.map { it[0] }.average()
+        val avgY = matrix.map { it[1] }.average()
+        val avgZ = matrix.map { it[2] }.average()
+        val timestamp = System.currentTimeMillis()
 
-        liste = Triple(x, y, z)
+        // Salvataggio nella lista dinamica
+        cacheList.add(AccelDataPoint(timestamp, avgX, avgY, avgZ))
     }
 
-    override fun onPredictionReceived(result: LocalPredictionResult) {
-        TODO("Not yet implemented")
+    /**
+     * Ritorna una copia dei dati accumulati e svuota atomicamente la lista
+     * per i successivi 5 minuti di campionamento.
+     */
+    fun flushCache(): List<AccelDataPoint> {
+        val snapshot = cacheList.toList()
+        cacheList.clear()
+        return snapshot
     }
 
-    override fun onMotionError(message: String) {
-        TODO("Not yet implemented")
-    }
+    override fun onShimmerConnected() {}
+    override fun onShimmerDisconnected() {}
+    override fun onShimmerReady() {}
+    override fun onPredictionReceived(result: LocalPredictionResult) {}
+    override fun onMotionError(message: String) {}
 }

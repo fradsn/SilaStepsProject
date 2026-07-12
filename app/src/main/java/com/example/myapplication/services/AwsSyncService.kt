@@ -16,6 +16,7 @@ import com.example.myapplication.db.SQLiteHelper
 import com.example.myapplication.network.AwsApiService
 import com.example.myapplication.network.AwsRecord
 import com.example.myapplication.network.AwsSyncPayload
+import com.example.myapplication.network.IntercettaFinestrePredizione
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.*
 import retrofit2.Retrofit
@@ -183,6 +184,9 @@ class AwsSyncService : Service() {
         while (cursorSteps.moveToNext()) { uniqueTimestamps.add(cursorSteps.getLong(0)) }
         cursorSteps.close()
 
+        // Scarica la cache dinamica in memoria di Shimmer e azzera il contenuto per i prossimi 5 minuti
+        val accelCache = IntercettaFinestrePredizione.getInstance().flushCache()
+
         val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault()).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }
@@ -232,11 +236,29 @@ class AwsSyncService : Service() {
                 if (cSt.moveToFirst()) { lastKnownSteps = cSt.getInt(0) }
                 cSt.close()
 
+                // Valori di default (0.0) se non c'è un'attività valida
+                var finalX = 0.0
+                var finalY = 0.0
+                var finalZ = 0.0
+
+                // CHECK: Riempie con i dati dell'accelerometro più vicino solo se c'è un'attività nota
+                val activityCleaned = lastKnownActivity.uppercase().trim()
+                if (activityCleaned.isNotEmpty() && activityCleaned != "UNKNOWN") {
+                    if (accelCache.isNotEmpty()) {
+                        val closestPoint = accelCache.minByOrNull { Math.abs(it.timestamp - ts) }
+                        closestPoint?.let {
+                            finalX = it.avgX
+                            finalY = it.avgY
+                            finalZ = it.avgZ
+                        }
+                    }
+                }
+
                 val record = AwsRecord(
                     userId = uId,
-                    x = 0.12,
-                    y = 0.45,
-                    z = 9.81,
+                    x = finalX,
+                    y = finalY,
+                    z = finalZ,
                     activity = lastKnownActivity,
                     heartRate = lastKnownBpm,
                     spo2 = lastKnownSpo2,
@@ -286,6 +308,22 @@ class AwsSyncService : Service() {
                 cSt.close()
             }
 
+            var finalX = 0.0
+            var finalY = 0.0
+            var finalZ = 0.0
+
+            // CHECK: Stesso controllo di sicurezza basato sul contesto dell'attività anche per il record forzato di emergenza
+            val activityCleaned = lastKnownActivity.uppercase().trim()
+            if (activityCleaned.isNotEmpty() && activityCleaned != "UNKNOWN") {
+                if (accelCache.isNotEmpty()) {
+                    // Per il trigger immediato prendiamo l'ultimissimo dato utile calcolato nella cache
+                    val lastPoint = accelCache.last()
+                    finalX = lastPoint.avgX
+                    finalY = lastPoint.avgY
+                    finalZ = lastPoint.avgZ
+                }
+            }
+
             val finalAlertString = if (!customMessage.isNullOrBlank()) {
                 "$forcedAlert | Note: $customMessage"
             } else {
@@ -294,9 +332,9 @@ class AwsSyncService : Service() {
 
             val dedicatedEventRecord = AwsRecord(
                 userId = uId,
-                x = 0.12,
-                y = 0.45,
-                z = 9.81,
+                x = finalX,
+                y = finalY,
+                z = finalZ,
                 activity = lastKnownActivity,
                 heartRate = lastKnownBpm,
                 spo2 = lastKnownSpo2,
