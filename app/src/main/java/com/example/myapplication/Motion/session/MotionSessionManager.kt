@@ -7,9 +7,9 @@ import com.example.myapplication.Motion.model.AccelWindow
 import com.example.myapplication.Motion.pipeline.MotionPipeline
 import com.example.myapplication.Motion.tflite.LocalPredictionResult
 import com.example.myapplication.BT.Shimmer.ShimmerClassicManager
-import com.example.myapplication.db.dao.PredictionDao
 import com.example.myapplication.db.GestoreStatistiche
-import java.util.concurrent.CopyOnWriteArraySet
+import java.lang.ref.WeakReference
+import java.util.concurrent.CopyOnWriteArrayList
 
 data class MotionUiState(
     val shimmerConnected: Boolean = false,
@@ -29,55 +29,60 @@ object MotionSessionManager : MotionPipeline.Listener {
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val observers = CopyOnWriteArraySet<Observer>()
+    private val observers = CopyOnWriteArrayList<WeakReference<Observer>>()
 
-    private var appContext: Context? = null
+    // MODIFICA CRUCIALE: Rimosso completamente il campo 'appContext: Context?' statico.
+    // Il ciclo di vita del contesto viene gestito ora internamente da MotionPipeline e GestoreStatistiche.
     private var motionPipeline: MotionPipeline? = null
     private var shimmerManager: ShimmerClassicManager? = null
 
     @Volatile
     private var state = MotionUiState()
+    private var gestoreStatistiche: GestoreStatistiche? = null
 
-    private lateinit var gestoreStatistiche: GestoreStatistiche
     fun initialize(context: Context) {
-        appContext = context.applicationContext
+        val safeContext = context.applicationContext
+
         if (motionPipeline == null) {
             motionPipeline = MotionPipeline(
-                context = appContext!!,
+                context = safeContext,
                 listener = this
             )
         }
 
-        gestoreStatistiche = GestoreStatistiche.getInstance(context)
+        if (gestoreStatistiche == null) {
+            gestoreStatistiche = GestoreStatistiche.getInstance(safeContext)
+        }
     }
 
     fun addObserver(observer: Observer) {
-        observers.add(observer)
+        removeObserver(observer)
+        observers.add(WeakReference(observer))
         notifyObserver(observer, state)
     }
 
     fun removeObserver(observer: Observer) {
-        observers.remove(observer)
+        observers.removeAll { it.get() == null || it.get() == observer }
     }
 
     fun getState(): MotionUiState = state
-
     fun isShimmerConnected(): Boolean = shimmerManager?.isConnected() == true
-
     fun getShimmerAddress(): String? = shimmerManager?.getAddress()
 
     fun setInferenceEnabled(enabled: Boolean) {
         motionPipeline?.setInferenceEnabled(enabled)
     }
 
-
     fun connectToShimmer(context: Context, macAddress: String) {
-        initialize(context)
+        // Passiamo il contesto all'inizializzatore locale locale senza salvarlo in variabili statiche
+        val safeContext = context.applicationContext
+        initialize(safeContext)
 
         shimmerManager?.disconnect()
+        shimmerManager?.updateListener(null)
 
         shimmerManager = ShimmerClassicManager.getInstance(
-            context = context.applicationContext,
+            context = safeContext,
             macAddress = macAddress,
             listener = motionPipeline ?: return
         )
@@ -100,6 +105,7 @@ object MotionSessionManager : MotionPipeline.Listener {
 
     fun disconnectShimmer() {
         shimmerManager?.disconnect()
+        shimmerManager?.updateListener(null)
         motionPipeline?.setInferenceEnabled(false)
         motionPipeline?.reset()
         shimmerManager = null
@@ -126,13 +132,13 @@ object MotionSessionManager : MotionPipeline.Listener {
                 lastError = null
             )
         }
-
         shimmerManager?.setupShimmer()
     }
 
     override fun onShimmerDisconnected() {
         motionPipeline?.setInferenceEnabled(false)
         motionPipeline?.reset()
+        shimmerManager?.updateListener(null)
         shimmerManager = null
 
         updateState {
@@ -171,14 +177,13 @@ object MotionSessionManager : MotionPipeline.Listener {
         shimmerManager?.startStreaming()
     }
 
-    override fun onWindowCreated(window: AccelWindow) {
-    }
+    override fun onWindowCreated(window: AccelWindow) {}
 
     override fun onPredictionReceived(result: LocalPredictionResult) {
         val activity = result.prediction
         val confidence = (result.confidence * 100).toInt().coerceIn(0, 100)
 
-        gestoreStatistiche.salvaPredizione(activity, confidence)
+        gestoreStatistiche?.salvaPredizione(activity, confidence)
 
         updateState {
             copy(
@@ -203,13 +208,24 @@ object MotionSessionManager : MotionPipeline.Listener {
 
     private fun notifyAllObservers(state: MotionUiState) {
         mainHandler.post {
-            observers.forEach { notifyObserver(it, state) }
+            observers.forEach { ref ->
+                val obs = ref.get()
+                if (obs != null) {
+                    notifyObserver(obs, state)
+                } else {
+                    observers.remove(ref)
+                }
+            }
         }
     }
 
     private fun notifyObserver(observer: Observer, state: MotionUiState) {
-        mainHandler.post {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
             observer.onMotionStateChanged(state)
+        } else {
+            mainHandler.post {
+                observer.onMotionStateChanged(state)
+            }
         }
     }
 }

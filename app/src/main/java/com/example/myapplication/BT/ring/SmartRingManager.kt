@@ -10,9 +10,9 @@ import android.util.Log
 import android.widget.Toast
 
 class SmartRingManager private constructor(
-    private val context: Context,
+    context: Context, // Rimosso 'private val' per non memorizzare il context originario
     private val macAddress: String,
-    private var listener: SmartRingListener
+    listener: SmartRingListener
 ) {
 
     interface SmartRingListener {
@@ -33,6 +33,7 @@ class SmartRingManager private constructor(
                     currentInstance.updateListener(listener)
                     currentInstance
                 } else {
+                    // Manteniamo rigorosamente solo l'applicationContext per l'istanza globale
                     val newInstance = SmartRingManager(context.applicationContext, macAddress, listener)
                     INSTANCE = newInstance
                     newInstance
@@ -42,6 +43,15 @@ class SmartRingManager private constructor(
 
         fun getActiveInstance(): SmartRingManager? = INSTANCE
     }
+
+    // Salviamo esplicitamente solo l'Application Context a livello di classe
+    private val appContext: Context = context.applicationContext
+
+    // Lock per sincronizzare l'aggiornamento e la notifica del listener (UI)
+    private val listenerLock = Any()
+
+    // Il listener diventa nullable per poter essere scollegato a runtime dalle Activity
+    private var listener: SmartRingListener? = listener
 
     private var bluetoothGatt: BluetoothGatt? = null
     private var connected = false
@@ -55,40 +65,42 @@ class SmartRingManager private constructor(
             currentMeasuringType = null // Immediate hardware unlock
             Log.w("SMART_RING", "Watchdog triggered! Measurement $typeFailed timed out after 60 seconds. State forced to reset.")
 
-            // Send clear alert message to user on the main UI thread
+            // Invio sicuro sul thread della UI usando l'appContext salvato
             mainHandler.post {
                 val msg = if (typeFailed == "PRESSURE") "Blood Pressure timeout. Please stay still and try again."
                 else "Blood Oxygen timeout. Please stay still and try again."
-                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                Toast.makeText(appContext, msg, Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    fun updateListener(newListener: SmartRingListener) {
-        this.listener = newListener
+    // Aggiornamento Thread-Safe del listener
+    fun updateListener(newListener: SmartRingListener?) {
+        synchronized(listenerLock) {
+            this.listener = newListener
+        }
     }
 
     fun isConnected(): Boolean = connected
     fun getAddress(): String = macAddress
 
-    // Exposes whether the hardware is busy with an active task
     fun isMeasuring(): Boolean = currentMeasuringType != null
 
-    // Allows reading the current active measurement type string
     fun getActiveMeasurementType(): String? = currentMeasuringType
 
     @SuppressLint("MissingPermission")
     fun connect(runtimeContext: Context) {
         val adapter = BluetoothAdapter.getDefaultAdapter()
         if (adapter == null) {
-            listener.onError("Bluetooth not supported")
+            safelyNotifyListener { it.onError("Bluetooth not supported") }
             return
         }
         try {
             val device = adapter.getRemoteDevice(macAddress)
+            // Usiamo l'applicationContext del context passato al volo per sicurezza
             bluetoothGatt = device.connectGatt(runtimeContext.applicationContext, false, gattCallback)
         } catch (e: Exception) {
-            listener.onError("Gatt connection error: ${e.message}")
+            safelyNotifyListener { it.onError("Gatt connection error: ${e.message}") }
         }
     }
 
@@ -100,7 +112,7 @@ class SmartRingManager private constructor(
             bluetoothGatt?.disconnect()
             bluetoothGatt?.close()
             bluetoothGatt = null
-            mainHandler.post { listener.onDisconnected() }
+            safelyNotifyListener { it.onDisconnected() }
         }, 1000)
     }
 
@@ -110,7 +122,7 @@ class SmartRingManager private constructor(
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 connected = true
                 mainHandler.post {
-                    listener.onConnected()
+                    safelyNotifyListener { it.onConnected() }
                     mainHandler.postDelayed({
                         try {
                             gatt.requestMtu(512)
@@ -122,8 +134,8 @@ class SmartRingManager private constructor(
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 connected = false
                 bluetoothGatt = null
-                currentMeasuringType = null // Reset state machine on disconnect
-                mainHandler.post { listener.onDisconnected() }
+                currentMeasuringType = null
+                safelyNotifyListener { it.onDisconnected() }
             }
         }
 
@@ -152,10 +164,7 @@ class SmartRingManager private constructor(
             Decoder.decode(hex)?.let { decodedResult ->
                 when (decodedResult.type) {
                     "SPO2" -> {
-                        // Success! Remove the 60-second watchdog callback
                         mainHandler.removeCallbacks(measurementWatchdogRunnable)
-
-                        // Maintain the state briefly for 2 seconds so the UI catches the update cleanly
                         val typeToReset = currentMeasuringType
                         if (typeToReset == "O2") {
                             mainHandler.postDelayed({
@@ -167,9 +176,7 @@ class SmartRingManager private constructor(
                         }
                     }
                     "BP" -> {
-                        // Success! Remove the 60-second watchdog callback
                         mainHandler.removeCallbacks(measurementWatchdogRunnable)
-
                         val typeToReset = currentMeasuringType
                         if (typeToReset == "PRESSURE") {
                             mainHandler.postDelayed({
@@ -181,34 +188,20 @@ class SmartRingManager private constructor(
                         }
                     }
                     "CALIBRATION_RESULT" -> {
-                        // Instantly unlock hardware on completion
                         currentMeasuringType = null
                         Log.d("SMART_RING", "Calibration result code: ${decodedResult.calibrationStatus}")
 
                         mainHandler.post {
                             when (decodedResult.calibrationStatus) {
-                                0 -> {
-                                    Log.d("SMART_RING", "Calibration completed successfully.")
-                                    Toast.makeText(context, "Calibration successful", Toast.LENGTH_SHORT).show()
-                                }
-                                1 -> {
-                                    Log.e("SMART_RING", "Calibration error: Invalid parameters.")
-                                    Toast.makeText(context, "Calibration failed: invalid parameters", Toast.LENGTH_SHORT).show()
-                                }
-                                2 -> {
-                                    Log.w("SMART_RING", "Calibration error: Device not in matching measurement mode.")
-                                    Toast.makeText(context, "Device not ready for calibration", Toast.LENGTH_SHORT).show()
-                                }
-                                else -> {
-                                    Log.e("SMART_RING", "Unknown calibration error code: ${decodedResult.calibrationStatus}")
-                                    Toast.makeText(context, "Unknown calibration error", Toast.LENGTH_SHORT).show()
-                                }
+                                0 -> Toast.makeText(appContext, "Calibration successful", Toast.LENGTH_SHORT).show()
+                                1 -> Toast.makeText(appContext, "Calibration failed: invalid parameters", Toast.LENGTH_SHORT).show()
+                                2 -> Toast.makeText(appContext, "Device not ready for calibration", Toast.LENGTH_SHORT).show()
+                                else -> Toast.makeText(appContext, "Unknown calibration error", Toast.LENGTH_SHORT).show()
                             }
                         }
                     }
                     "MEASUREMENT_FAILED" -> {
                         mainHandler.removeCallbacks(measurementWatchdogRunnable)
-                        // Reset immediately on explicit internal failure code without extra delays
                         currentMeasuringType = null
                         Log.w("SMART_RING", "Measurement failed by hardware. State unlocked immediately.")
                     }
@@ -220,7 +213,7 @@ class SmartRingManager private constructor(
                         }, 2000)
                     }
                 }
-                mainHandler.post { listener.onDataReceived(decodedResult) }
+                safelyNotifyListener { it.onDataReceived(decodedResult) }
             }
         }
 
@@ -232,12 +225,7 @@ class SmartRingManager private constructor(
 
     @SuppressLint("MissingPermission")
     private fun enableNotifications(gatt: BluetoothGatt) {
-        val service = gatt.getService(PacketManager.SERVICE_UUID)
-        if (service == null) {
-            Log.e("SMART_RING", "Service UUID not found on hardware!")
-            return
-        }
-
+        val service = gatt.getService(PacketManager.SERVICE_UUID) ?: return
         val charControl = service.getCharacteristic(PacketManager.CHAR_COMMAND_CONTROL)
         if (charControl != null) setIndicate(gatt, charControl)
 
@@ -251,19 +239,16 @@ class SmartRingManager private constructor(
     private fun setIndicate(gatt: BluetoothGatt, char: BluetoothGattCharacteristic) {
         try {
             gatt.setCharacteristicNotification(char, true)
-            val desc = char.getDescriptor(PacketManager.CCCD_UUID)
-            if (desc != null) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    gatt.writeDescriptor(desc, BluetoothGattDescriptor.ENABLE_INDICATION_VALUE)
-                } else {
-                    @Suppress("DEPRECATION")
-                    desc.value = BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
-                    gatt.writeDescriptor(desc)
-                }
-                Log.d("SMART_RING", "Notifications registered for: ${char.uuid}")
+            val desc = char.getDescriptor(PacketManager.CCCD_UUID) ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                gatt.writeDescriptor(desc, BluetoothGattDescriptor.ENABLE_INDICATION_VALUE)
+            } else {
+                @Suppress("DEPRECATION")
+                desc.value = BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
+                gatt.writeDescriptor(desc)
             }
         } catch (e: Exception) {
-            Log.e("SMART_RING", "Critical error during setIndicate: ${e.message}")
+            Log.e("SMART_RING", "Error during setIndicate: ${e.message}")
         }
     }
 
@@ -273,23 +258,21 @@ class SmartRingManager private constructor(
         if (gatt == null || !connected) return
 
         val service = gatt.getService(PacketManager.SERVICE_UUID)
-        val char = service?.getCharacteristic(PacketManager.CHAR_COMMAND_CONTROL)
+        val char = service?.getCharacteristic(PacketManager.CHAR_COMMAND_CONTROL) ?: return
 
-        if (char != null) {
-            val packet = PacketManager.buildPacket(id, key, payload)
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    gatt.writeCharacteristic(char, packet, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
-                } else {
-                    @Suppress("DEPRECATION")
-                    char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-                    @Suppress("DEPRECATION")
-                    char.value = packet
-                    gatt.writeCharacteristic(char)
-                }
-            } catch (e: Exception) {
-                Log.e("SMART_RING", "Error writing characteristic packet: ${e.message}")
+        val packet = PacketManager.buildPacket(id, key, payload)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                gatt.writeCharacteristic(char, packet, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
+            } else {
+                @Suppress("DEPRECATION")
+                char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                @Suppress("DEPRECATION")
+                char.value = packet
+                gatt.writeCharacteristic(char)
             }
+        } catch (e: Exception) {
+            Log.e("SMART_RING", "Error writing characteristic packet: ${e.message}")
         }
     }
 
@@ -302,12 +285,13 @@ class SmartRingManager private constructor(
             val payload = byteArrayOf(systolic.toByte(), diastolic.toByte())
             sendCommand(0x03.toByte(), 0x03.toByte(), payload)
         } else {
-            listener.onError("Invalid inputs (Systolic: 60-250, Diastolic: 40-150)")
+            safelyNotifyListener { it.onError("Invalid inputs (Systolic: 60-250, Diastolic: 40-150)") }
         }
     }
 
     fun syncUserInfo() {
-        val payload = PacketManager.buildUserInfoPayload(context)
+        // Usiamo l'appContext memorizzato in modo sicuro per estrarre i dati utente
+        val payload = PacketManager.buildUserInfoPayload(appContext)
         sendCommand(0x01.toByte(), 0x01.toByte(), payload)
     }
 
@@ -347,5 +331,17 @@ class SmartRingManager private constructor(
         mainHandler.postDelayed({
             sendCommand(0x03.toByte(), 0x0C.toByte(), byteArrayOf(0x00, 0x01))
         }, 600)
+    }
+
+    /**
+     * Helper per disaccoppiare in sicurezza i Thread asincroni del BLE dal
+     * ciclo di vita della UI (Activity/Fragment)
+     */
+    private fun safelyNotifyListener(action: (SmartRingListener) -> Unit) {
+        mainHandler.post {
+            synchronized(listenerLock) {
+                listener?.let(action)
+            }
+        }
     }
 }

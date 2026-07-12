@@ -23,11 +23,10 @@ data class ImuSample(
     val gyroZ: Double
 )
 
-// MODIFICA 1: Costruttore privato e listener diventa 'var'
 class ShimmerClassicManager private constructor(
-    private val context: Context,
+    context: Context, // Rimosso 'private val' per evitare di salvare il context originario
     private val macAddress: String,
-    private var listener: ShimmerListener
+    listener: ShimmerListener
 ) {
 
     interface ShimmerListener {
@@ -53,15 +52,9 @@ class ShimmerClassicManager private constructor(
         private const val ACCEL_SENSITIVITY_4G = 819.0
         private const val GYRO_SENSITIVITY_500DPS = 65.5
 
-        // --- GESTIONE SINGLETON ---
         @Volatile
         private var INSTANCE: ShimmerClassicManager? = null
 
-        /**
-         * Recupera l'istanza unica dello Shimmer.
-         * Se non esiste o l'indirizzo MAC è differente, ne crea una nuova.
-         * Se esiste già, aggiorna semplicemente il listener con l'Activity corrente.
-         */
         fun getInstance(context: Context, macAddress: String, listener: ShimmerListener): ShimmerClassicManager {
             return INSTANCE ?: synchronized(this) {
                 val currentInstance = INSTANCE
@@ -69,7 +62,7 @@ class ShimmerClassicManager private constructor(
                     currentInstance.updateListener(listener)
                     currentInstance
                 } else {
-                    // Usiamo context.applicationContext per evitare Memory Leak legati alle Activity
+                    // Manteniamo SOLO l'applicationContext per il singleton globale
                     val newInstance = ShimmerClassicManager(context.applicationContext, macAddress, listener)
                     INSTANCE = newInstance
                     newInstance
@@ -77,11 +70,17 @@ class ShimmerClassicManager private constructor(
             }
         }
 
-        /**
-         * Ritorna l'istanza attualmente attiva (può essere null se non è mai stata inizializzata)
-         */
         fun getActiveInstance(): ShimmerClassicManager? = INSTANCE
     }
+
+    // Salviamo esplicitamente solo l'Application Context a livello di istanza
+    private val appContext: Context = context.applicationContext
+
+    // Usiamo un Lock per evitare race condition multithreading sulla gestione del listener
+    private val listenerLock = Any()
+
+    // Il listener deve poter essere nullo per evitare memory leak quando l'Activity si distrugge
+    private var listener: ShimmerListener? = listener
 
     private var input: InputStream? = null
     private var output: OutputStream? = null
@@ -90,10 +89,13 @@ class ShimmerClassicManager private constructor(
     private var setup = false
     private var streaming = false
     private val frameBuffer = mutableListOf<Byte>()
+    private val mainHandler = Handler(Looper.getMainLooper())
 
-    // MODIFICA 2: Metodo per ri-agganciare il listener quando si cambia Activity
-    fun updateListener(newListener: ShimmerListener) {
-        this.listener = newListener
+    // Aggiorna in modo thread-safe il riferimento del listener (UI)
+    fun updateListener(newListener: ShimmerListener?) {
+        synchronized(listenerLock) {
+            this.listener = newListener
+        }
     }
 
     fun isConnected(): Boolean = connected
@@ -106,8 +108,9 @@ class ShimmerClassicManager private constructor(
         thread {
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    if (ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-                        listener.onError("Permesso BLUETOOTH_CONNECT mancante")
+                    // Usiamo l'appContext salvato in modo sicuro
+                    if (ActivityCompat.checkSelfPermission(appContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                        safelyNotifyListener { it.onError("Permesso BLUETOOTH_CONNECT mancante") }
                         return@thread
                     }
                 }
@@ -116,16 +119,16 @@ class ShimmerClassicManager private constructor(
                 input = sock.inputStream
                 output = sock.outputStream
                 connected = true
-                listener.onConnected()
+                safelyNotifyListener { it.onConnected() }
             } catch (e: Exception) {
-                listener.onError("Connessione fallita: ${e.message}")
+                safelyNotifyListener { it.onError("Connessione fallita: ${e.message}") }
             }
         }
     }
 
     fun setupShimmer() {
         if (!connected || input == null || output == null) {
-            listener.onError("Shimmer non connesso")
+            safelyNotifyListener { it.onError("Shimmer non connesso") }
             return
         }
 
@@ -141,16 +144,19 @@ class ShimmerClassicManager private constructor(
                 send(cmd)
                 val ack = readAck()
                 if (ack != 0xFF.toByte()) {
-                    Handler(Looper.getMainLooper()).post { listener.onError("Errore setup: No ACK per ${"%02X".format(cmd[0])}") }
+                    safelyNotifyListener { it.onError("Errore setup: No ACK per ${"%02X".format(cmd[0])}") }
                     return@thread
                 }
                 Thread.sleep(100)
             }
 
             setup = true
-            Handler(Looper.getMainLooper()).post {
-                Toast.makeText(context, "Shimmer configurato (50Hz, ±4g, 500dps)", Toast.LENGTH_SHORT).show()
-                listener.onSetup()
+            mainHandler.post {
+                // I Toast si vedono meglio se c'è un listener/Activity attiva, usiamo appContext come fallback sicuro
+                Toast.makeText(appContext, "Shimmer configurato (50Hz, ±4g, 500dps)", Toast.LENGTH_SHORT).show()
+                synchronized(listenerLock) {
+                    listener?.onSetup()
+                }
             }
         }
     }
@@ -167,7 +173,7 @@ class ShimmerClassicManager private constructor(
 
     fun startStreaming() {
         if (!setup) {
-            listener.onError("Setup incompleto")
+            safelyNotifyListener { it.onError("Setup incompleto") }
             return
         }
         send(CMD_START_STREAM)
@@ -194,7 +200,7 @@ class ShimmerClassicManager private constructor(
                     }
                 } catch (e: Exception) {
                     if (streaming) {
-                        Handler(Looper.getMainLooper()).post { listener.onError("Errore lettura: ${e.message}") }
+                        safelyNotifyListener { it.onError("Errore lettura: ${e.message}") }
                     }
                     break
                 }
@@ -252,7 +258,10 @@ class ShimmerClassicManager private constructor(
         val calGyroY = -gx
         val calGyroZ = -gz
 
-        listener.onSampleReceived(ImuSample(calAccX, calAccY, calAccZ, calGyroX, calGyroY, calGyroZ))
+        // Notifica del dato in modo thread-safe
+        synchronized(listenerLock) {
+            listener?.onSampleReceived(ImuSample(calAccX, calAccY, calAccZ, calGyroX, calGyroY, calGyroZ))
+        }
     }
 
     private fun send(cmd: Byte) = send(byteArrayOf(cmd))
@@ -262,7 +271,7 @@ class ShimmerClassicManager private constructor(
             output?.write(bytes)
             output?.flush()
         } catch (e: Exception) {
-            Handler(Looper.getMainLooper()).post { listener.onError("Errore invio: ${e.message}") }
+            safelyNotifyListener { it.onError("Errore invio: ${e.message}") }
         }
     }
 
@@ -273,6 +282,18 @@ class ShimmerClassicManager private constructor(
             input?.close()
             output?.close()
         } catch (_: Exception) {}
-        listener.onDisconnected()
+        safelyNotifyListener { it.onDisconnected() }
+    }
+
+    /**
+     * Helper per notificare in sicurezza sul Main Thread controllando
+     * contemporaneamente la presenza del listener per prevenire i Memory Leak.
+     */
+    private fun safelyNotifyListener(action: (ShimmerListener) -> Unit) {
+        mainHandler.post {
+            synchronized(listenerLock) {
+                listener?.let(action)
+            }
+        }
     }
 }
