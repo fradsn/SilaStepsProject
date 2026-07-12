@@ -105,6 +105,9 @@ class MotionPipeline(
 
                 val result = localClassifier.predict(window.data)
                 listener?.onPredictionReceived(result)
+
+                //ToDo: for (record in window.data.trasposta?) lancia notifica (record, activity)
+
             } catch (e: Exception) {
                 listener?.onMotionError("Errore inferenza locale: ${e.message}")
             } finally {
