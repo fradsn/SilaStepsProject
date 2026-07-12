@@ -41,7 +41,7 @@ class AwsSyncService : Service() {
         private const val NOTIFICATION_ID = 2005
         private const val CHANNEL_ID = "aws_sync_channel"
 
-        private const val SYNC_INTERVAL_MS = 5 * 60 * 1000L
+        private const val SYNC_INTERVAL_MS =  60 * 1000L
 
         // Actions and Extras matching exactly with the Profile and Health services pipeline
         const val ACTION_TRIGGER_IMMEDIATE_SYNC = "com.example.myapplication.TRIGGER_IMMEDIATE_SYNC"
@@ -157,7 +157,7 @@ class AwsSyncService : Service() {
         val database = dbHelper.readableDatabase
         val uniqueTimestamps = mutableSetOf<Long>()
 
-        // 1. Recupero dei timestamp dai cursori locali
+        // 1. Recovering fresh timestamps from local tables cursors
         val cursorBpm = database.rawQuery("SELECT timestamp FROM bpm WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
         while (cursorBpm.moveToNext()) { uniqueTimestamps.add(cursorBpm.getLong(0)) }
         cursorBpm.close()
@@ -178,26 +178,85 @@ class AwsSyncService : Service() {
         while (cursorPosition.moveToNext()) { uniqueTimestamps.add(cursorPosition.getLong(0)) }
         cursorPosition.close()
 
+        // INTEGRATION: Fetch timestamps from the new real steps database table
+        val cursorSteps = database.rawQuery("SELECT timestamp FROM steps WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
+        while (cursorSteps.moveToNext()) { uniqueTimestamps.add(cursorSteps.getLong(0)) }
+        cursorSteps.close()
+
         val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault()).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }
 
-        // Variabili per la tecnica "last known value" (ultimo valore noto)
+        // Context trackers for the "last known value" pattern
         var lastKnownBpm = 0
         var lastKnownSpo2 = 0
         var lastKnownPressure = "0/0"
         var lastKnownLatitude = 0.0
         var lastKnownLongitude = 0.0
         var lastKnownActivity = "UNKNOWN"
+        var lastKnownSteps = 0
 
-        // --- CASO DI FALLBACK (IL TUO SUGGERIMENTO) ---
-        // Se non ci sono nuove misurazioni nel DB, ma è stato forzato un allert/report, creiamo un record fittizio ora
-        if (uniqueTimestamps.isEmpty()) {
-            if (forcedAlert != null) {
-                val currentNowMs = System.currentTimeMillis()
-                Log.w(TAG, "No new measurements found in DB for this alert. Creating a fallback record at current timestamp.")
+        var highestTimestampInBatch = lastTimestamp
 
-                // Recuperiamo comunque gli ultimissimi dati memorizzati (anche se antecedenti a lastTimestamp)
+        // 2. Standard Database Historical Processing Loop (keeps historical records clean with 'no_alert')
+        if (uniqueTimestamps.isNotEmpty()) {
+            val sortedTimestamps = uniqueTimestamps.sorted()
+            highestTimestampInBatch = sortedTimestamps.last()
+
+            for (ts in sortedTimestamps) {
+                val cBpm = database.rawQuery("SELECT bpm FROM bpm WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
+                if (cBpm.moveToFirst()) { lastKnownBpm = cBpm.getInt(0) }
+                cBpm.close()
+
+                val cO2 = database.rawQuery("SELECT value FROM o2 WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
+                if (cO2.moveToFirst()) { lastKnownSpo2 = cO2.getInt(0) }
+                cO2.close()
+
+                val cPress = database.rawQuery("SELECT systolic, diastolic FROM pressure WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
+                if (cPress.moveToFirst()) { lastKnownPressure = "${cPress.getInt(0)}/${cPress.getInt(1)}" }
+                cPress.close()
+
+                val cAct = database.rawQuery("SELECT activity FROM prediction WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
+                if (cAct.moveToFirst()) { lastKnownActivity = cAct.getString(0) }
+                cAct.close()
+
+                val cPos = database.rawQuery("SELECT latitude, longitude FROM position WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
+                if (cPos.moveToFirst()) {
+                    lastKnownLatitude = cPos.getDouble(0)
+                    lastKnownLongitude = cPos.getDouble(1)
+                }
+                cPos.close()
+
+                // INTEGRATION: Extract the last recorded real steps up to this timeline entry item
+                val cSt = database.rawQuery("SELECT value FROM steps WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
+                if (cSt.moveToFirst()) { lastKnownSteps = cSt.getInt(0) }
+                cSt.close()
+
+                val record = AwsRecord(
+                    userId = uId,
+                    x = 0.12,
+                    y = 0.45,
+                    z = 9.81,
+                    activity = lastKnownActivity,
+                    heartRate = lastKnownBpm,
+                    spo2 = lastKnownSpo2,
+                    bloodPressure = lastKnownPressure,
+                    latitude = lastKnownLatitude,
+                    longitude = lastKnownLongitude,
+                    steps = lastKnownSteps, // Real steps data from SQLite
+                    alert = "no_alert",
+                    timestamp = isoFormat.format(Date(ts))
+                )
+                list.add(record)
+            }
+        }
+
+        // 3. UNIVERSAL DEDICATED EVENT TRIGGER BLOCK
+        if (forcedAlert != null) {
+            val currentNowMs = System.currentTimeMillis()
+            Log.w(TAG, "Forced pipeline event detected ($forcedAlert). Appending a separate dedicated record at exact current timestamp.")
+
+            if (uniqueTimestamps.isEmpty()) {
                 val cBpm = database.rawQuery("SELECT bpm FROM bpm ORDER BY timestamp DESC LIMIT 1", null)
                 if (cBpm.moveToFirst()) { lastKnownBpm = cBpm.getInt(0) }
                 cBpm.close()
@@ -221,70 +280,19 @@ class AwsSyncService : Service() {
                 }
                 cPos.close()
 
-                val finalAlertString = if (!customMessage.isNullOrBlank()) {
-                    "$forcedAlert | Note: $customMessage"
-                } else {
-                    forcedAlert
-                }
+                // INTEGRATION: Extract latest steps entry for the emergency fallback packet
+                val cSt = database.rawQuery("SELECT value FROM steps ORDER BY timestamp DESC LIMIT 1", null)
+                if (cSt.moveToFirst()) { lastKnownSteps = cSt.getInt(0) }
+                cSt.close()
+            }
 
-                val fallbackRecord = AwsRecord(
-                    userId = uId,
-                    x = 0.12,
-                    y = 0.45,
-                    z = 9.81,
-                    activity = lastKnownActivity,
-                    heartRate = lastKnownBpm,
-                    spo2 = lastKnownSpo2,
-                    bloodPressure = lastKnownPressure,
-                    latitude = lastKnownLatitude,
-                    longitude = lastKnownLongitude,
-                    steps = 1540,
-                    alert = finalAlertString,
-                    timestamp = isoFormat.format(Date(currentNowMs))
-                )
-                list.add(fallbackRecord)
-
-                database.close()
-
-                // Ritorniamo il record generato. NON aggiorniamo lastSyncTimestamp con currentNowMs
-                // per evitare di saltare future letture reali se l'orologio di sistema diverge dal DB.
-                return Pair(list, lastTimestamp)
+            val finalAlertString = if (!customMessage.isNullOrBlank()) {
+                "$forcedAlert | Note: $customMessage"
             } else {
-                database.close()
-                // Se non c'è nessun allarme e non ci sono record, non fare nulla
-                return Pair(emptyList(), lastTimestamp)
+                forcedAlert
             }
-        }
 
-        // 2. Comportamento standard se ci sono record reali nel DB (rimane invariato)
-        val sortedTimestamps = uniqueTimestamps.sorted()
-        val highestTimestampInBatch = sortedTimestamps.last()
-
-        for (ts in sortedTimestamps) {
-            val cBpm = database.rawQuery("SELECT bpm FROM bpm WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
-            if (cBpm.moveToFirst()) { lastKnownBpm = cBpm.getInt(0) }
-            cBpm.close()
-
-            val cO2 = database.rawQuery("SELECT value FROM o2 WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
-            if (cO2.moveToFirst()) { lastKnownSpo2 = cO2.getInt(0) }
-            cO2.close()
-
-            val cPress = database.rawQuery("SELECT systolic, diastolic FROM pressure WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
-            if (cPress.moveToFirst()) { lastKnownPressure = "${cPress.getInt(0)}/${cPress.getInt(1)}" }
-            cPress.close()
-
-            val cAct = database.rawQuery("SELECT activity FROM prediction WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
-            if (cAct.moveToFirst()) { lastKnownActivity = cAct.getString(0) }
-            cAct.close()
-
-            val cPos = database.rawQuery("SELECT latitude, longitude FROM position WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
-            if (cPos.moveToFirst()) {
-                lastKnownLatitude = cPos.getDouble(0)
-                lastKnownLongitude = cPos.getDouble(1)
-            }
-            cPos.close()
-
-            val record = AwsRecord(
+            val dedicatedEventRecord = AwsRecord(
                 userId = uId,
                 x = 0.12,
                 y = 0.45,
@@ -295,30 +303,15 @@ class AwsSyncService : Service() {
                 bloodPressure = lastKnownPressure,
                 latitude = lastKnownLatitude,
                 longitude = lastKnownLongitude,
-                steps = 1540,
-                alert = "no_alert",
-                timestamp = isoFormat.format(Date(ts))
+                steps = lastKnownSteps, // Real steps data from SQLite
+                alert = finalAlertString,
+                timestamp = isoFormat.format(Date(currentNowMs))
             )
-            list.add(record)
+            list.add(dedicatedEventRecord)
+            Log.w(TAG, "Dedicated event record successfully generated: ${dedicatedEventRecord.timestamp} -> Steps: $lastKnownSteps | Content: $finalAlertString")
         }
 
         database.close()
-
-        // Applica il tipo di allarme all'ultimo record inserito del batch reale
-        if (forcedAlert != null && list.isNotEmpty()) {
-            val lastIndex = list.size - 1
-            val mostRecentRecord = list[lastIndex]
-
-            val finalAlertString = if (!customMessage.isNullOrBlank()) {
-                "$forcedAlert | Note: $customMessage"
-            } else {
-                forcedAlert
-            }
-
-            list[lastIndex] = mostRecentRecord.copy(alert = finalAlertString)
-            Log.w(TAG, "Manual alert injection successful into newest data item: ${mostRecentRecord.timestamp} -> Content: $finalAlertString")
-        }
-
         return Pair(list, highestTimestampInBatch)
     }
 
@@ -347,7 +340,7 @@ class AwsSyncService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        Log.d(TAG, "Chiusura da Task Manager")
+        Log.d(TAG, "Task removed from Task Manager.")
         stopSelf()
     }
 }
