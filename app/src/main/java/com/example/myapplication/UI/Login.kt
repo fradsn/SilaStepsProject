@@ -12,6 +12,7 @@ import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -68,11 +69,8 @@ class Login : AppCompatActivity() {
                         pulisciDB()
 
                         // GPS tracking
-                        startGPS()
+                        startGpsProcedi()
 
-                        val intentLogin = Intent(this, UserProfileActivity::class.java)
-                        startActivity(intentLogin)
-                        finish()
                     } else {
                         Log.w("Login", "Authentication failed", task.exception)
                         Toast.makeText(
@@ -103,11 +101,8 @@ class Login : AppCompatActivity() {
             pulisciDB()
 
             // GPS tracking
-            startGPS()
+            startGpsProcedi()
 
-            val intentLogin = Intent(this, UserProfileActivity::class.java)
-            startActivity(intentLogin)
-            finish()
         }
     }
 
@@ -157,12 +152,40 @@ class Login : AppCompatActivity() {
         return response
     }
 
-    private fun startGPS() {
+    private fun startGpsProcedi() {
         if (controllaPermessiGPS() && checkGpsOn()) {
             val intent = Intent(this, LocationService::class.java)
             ContextCompat.startForegroundService(this, intent)
+
+            val intentLogin = Intent(this, UserProfileActivity::class.java)
+            startActivity(intentLogin)
+            finish()
+
+        } else{
+            mostraMessaggioGPS()
         }
     }
+
+    private fun mostraMessaggioGPS() {
+        AlertDialog.Builder(this)
+            .setTitle("GPS disabled")
+            .setMessage("GPS not detected. Do you want to proceed without GPS functionality?")
+            .setPositiveButton("Proceed") { _, _ ->
+
+                Log.d("GPS", "Procedo senza GPS")
+
+                // Procedi SENZA GPS → vai alla prossima Activity
+                val intentLogin = Intent(this, UserProfileActivity::class.java)
+                startActivity(intentLogin)
+                finish()
+            }
+            .setNegativeButton("Try again") { _, _ ->
+                startGpsProcedi()
+            }
+            .setCancelable(false)
+            .show()
+    }
+
 
     fun checkGpsOn(): Boolean {
         val lm = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
