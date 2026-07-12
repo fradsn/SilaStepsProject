@@ -1,6 +1,7 @@
 package com.example.myapplication.UI
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -11,7 +12,6 @@ import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
-import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -158,9 +158,25 @@ class Login : AppCompatActivity() {
     }
 
     private fun startGPS() {
-        if (controllaPermessiGPS()) {
+        if (controllaPermessiGPS() && checkGpsOn()) {
             val intent = Intent(this, LocationService::class.java)
             ContextCompat.startForegroundService(this, intent)
         }
     }
+
+    fun checkGpsOn(): Boolean {
+        val lm = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+
+        val gpsOn = lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)
+
+        if (gpsOn) {
+            Log.d("GPS", "GPS acceso")
+            return true
+        } else {
+            Log.d("GPS", "GPS spento")
+            return false
+        }
+    }
+
+
 }

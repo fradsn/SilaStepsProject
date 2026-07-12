@@ -67,14 +67,17 @@ class LocationService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        super.onTaskRemoved(rootIntent)
-        Log.d("LocationService", "Chiusura da Task Manager")
+        Log.d("LocationService", "Chiusura da onTaskRemoved")
 
         // Ferma il servizio dopo lo swipe dell'utente
         stopSelf()
+
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
+        Log.d("LocationService", "Chiusura da onDestroy")
+
         // Cancella le coroutine periodiche per evitare che continuino a girare
         serviceScope.cancel()
         super.onDestroy()
