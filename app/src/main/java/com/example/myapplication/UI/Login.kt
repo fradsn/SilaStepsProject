@@ -11,6 +11,7 @@ import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -18,12 +19,17 @@ import com.example.myapplication.R
 import com.example.myapplication.db.GestoreStatistiche
 import com.example.myapplication.services.LocationService
 import com.google.firebase.auth.FirebaseAuth
+import java.util.Calendar
 
 class Login : AppCompatActivity() {
     private val auth = FirebaseAuth.getInstance()
+    private lateinit var gestoreStatistiche: GestoreStatistiche
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        gestoreStatistiche = GestoreStatistiche.getInstance(this)
+
         enableEdgeToEdge()
         setContentView(R.layout.activity_login)
 
@@ -92,6 +98,16 @@ class Login : AppCompatActivity() {
             // SE L'UTENTE È GIÀ LOGGATO IN CASH, PREPARIAMO IL SUO DATABASE DEDICATO PRIMA DI ENTRARE
             GestoreStatistiche.resetInstance()
 
+            val midnight = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+
+            // Elimina i dati più vecchi della mezzanotte
+            gestoreStatistiche.deleteOlderThan(midnight)
+
             // GPS tracking
             if (controllaPermessiGPS())
                 startGPS()
@@ -104,7 +120,7 @@ class Login : AppCompatActivity() {
 
     private fun controllaPermessiGPS(): Boolean {
         if (
-            ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+            ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED ||
             ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED
         ) {
             ActivityCompat.requestPermissions(
@@ -117,6 +133,9 @@ class Login : AppCompatActivity() {
             )
         }
 
+        var response = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
         if (
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
             ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED
@@ -126,11 +145,11 @@ class Login : AppCompatActivity() {
                 arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
                 1002
             )
+
+            response = response && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
         }
 
-
-        return ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-                && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        return response
     }
 
     private fun startGPS() {
