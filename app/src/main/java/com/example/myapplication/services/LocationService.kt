@@ -59,7 +59,7 @@ class LocationService : Service() {
 
         // Avvia il ciclo continuo se non è già attivo
         if (locationJob == null || locationJob?.isActive == false) {
-            startPeriodicLocationUpdates(60 * 1000L) // un minuto in millisecondi
+            startPeriodicLocationUpdates(30 * 1000L) // un minuto in millisecondi
         }
         return START_STICKY
     }

@@ -41,7 +41,7 @@ class AwsSyncService : Service() {
         private const val NOTIFICATION_ID = 2005
         private const val CHANNEL_ID = "aws_sync_channel"
 
-        private const val SYNC_INTERVAL_MS =  60 * 1000L
+        private const val SYNC_INTERVAL_MS = 5* 60 * 1000L
 
         // Actions and Extras matching exactly with the Profile and Health services pipeline
         const val ACTION_TRIGGER_IMMEDIATE_SYNC = "com.example.myapplication.TRIGGER_IMMEDIATE_SYNC"
