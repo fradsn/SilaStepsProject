@@ -15,7 +15,10 @@ import com.example.myapplication.R
 import com.example.myapplication.db.SQLiteHelper
 import com.example.myapplication.network.AwsApiService
 import com.example.myapplication.network.AwsRecord
+import com.example.myapplication.network.AwsRawRecord
 import com.example.myapplication.network.AwsSyncPayload
+import com.example.myapplication.network.AwsRawSyncPayload
+import com.example.myapplication.network.IntercettaFinestrePredizione
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.*
 import retrofit2.Retrofit
@@ -37,6 +40,7 @@ class AwsSyncService : Service() {
 
         private const val PREFS_NAME = "AwsSyncPrefs"
         private const val KEY_LAST_SYNC_TIMESTAMP = "last_sync_timestamp"
+        private const val KEY_LAST_RAW_SYNC_TIMESTAMP = "last_raw_sync_timestamp"
 
         private const val NOTIFICATION_ID = 2005
         private const val CHANNEL_ID = "aws_sync_channel"
@@ -109,6 +113,17 @@ class AwsSyncService : Service() {
         val lastSyncTimestamp = sharedPrefs.getLong(KEY_LAST_SYNC_TIMESTAMP, 0L)
 
         val dbHelper = SQLiteHelper(applicationContext, firebaseUserId)
+
+        // 1. Inizializzazione Retrofit e API Service comune
+        val retrofit = Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+        val apiService = retrofit.create(AwsApiService::class.java)
+
+        // =====================================================================================
+        // PIPELINE 1: INVIO MISURAZIONI GENERALI AGGREGATE (TABELLA DYNAMODB 1)
+        // =====================================================================================
         val (recordsToSend, maxTimestampInBatch) = fetchNewRecordsStrict(
             dbHelper = dbHelper,
             uId = firebaseUserId,
@@ -117,39 +132,88 @@ class AwsSyncService : Service() {
             customMessage = customMessage
         )
 
-        if (recordsToSend.isEmpty()) {
+        if (recordsToSend.isNotEmpty()) {
+            val uniqueRecordsToSend = recordsToSend.distinctBy { it.timestamp }
+            Log.d(TAG, "Filtered batch metrics: Original count=${recordsToSend.size} | Unique items count=${uniqueRecordsToSend.size}")
+
+            try {
+                val payload = AwsSyncPayload(records = uniqueRecordsToSend)
+                val response = apiService.uploadRecords(apiKey = API_KEY, payload = payload)
+                if (response.isSuccessful) {
+                    Log.d(TAG, "Cloud sync transmission successful! ${uniqueRecordsToSend.size} records uploaded to target bucket.")
+                    sharedPrefs.edit().putLong(KEY_LAST_SYNC_TIMESTAMP, maxTimestampInBatch).apply()
+                } else {
+                    Log.e(TAG, "AWS Remote Endpoint rejected request: ${response.code()} - ${response.errorBody()?.string()}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Network transport failure encountered during background payload upload", e)
+            }
+        } else {
             Log.d(TAG, "No new database entries discovered since the last synchronization cycle.")
-            return
         }
 
-        val uniqueRecordsToSend = recordsToSend.distinctBy { it.timestamp }
-        Log.d(TAG, "Filtered batch metrics: Original count=${recordsToSend.size} | Unique items count=${uniqueRecordsToSend.size}")
+        // =====================================================================================
+        // PIPELINE 2: INVIO DELLE MEDIE DELLE FINESTRE RAW SHIMMER XYZ (TABELLA DYNAMODB 2)
+        // =====================================================================================
+        // La specifica prevede che i dati RAW rimangano FISSI a 5 minuti e non vengano inviati subito per allerta
+        if (forcedAlert == null) {
+            val (rawRecordsToSend, maxRawTimestamp) = fetchNewRawRecordsFromCache(uId = firebaseUserId)
 
-        val retrofit = Retrofit.Builder()
-            .baseUrl(BASE_URL)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-
-        val apiService = retrofit.create(AwsApiService::class.java)
-        val payload = AwsSyncPayload(records = uniqueRecordsToSend)
-
-        try {
-            val response = apiService.uploadRecords(apiKey = API_KEY, payload = payload)
-            if (response.isSuccessful) {
-                Log.d(TAG, "Cloud sync transmission successful! ${uniqueRecordsToSend.size} records uploaded to target bucket.")
-
-                sharedPrefs.edit().putLong(KEY_LAST_SYNC_TIMESTAMP, maxTimestampInBatch).apply()
-
-                withContext(Dispatchers.Main) {
-                    val msg = if (forcedAlert != null) "🚨 IMMEDIATE Cloud Sync Triggered!" else "Cloud Sync Successful!"
-                    Toast.makeText(applicationContext, "$msg (${uniqueRecordsToSend.size} records)", Toast.LENGTH_SHORT).show()
+            if (rawRecordsToSend.isNotEmpty()) {
+                try {
+                    val rawPayload = AwsRawSyncPayload(records = rawRecordsToSend)
+                    val response = apiService.uploadRawRecords(apiKey = API_KEY, payload = rawPayload)
+                    if (response.isSuccessful) {
+                        Log.d(TAG, "Cloud sync dati RAW (Medie finestre RAM) completato! ${rawRecordsToSend.size} record inviati.")
+                        sharedPrefs.edit().putLong(KEY_LAST_RAW_SYNC_TIMESTAMP, maxRawTimestamp).apply()
+                    } else {
+                        Log.e(TAG, "Endpoint remoto RAW ha rifiutato la richiesta delle medie: ${response.code()}")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Errore durante il trasporto di rete dei dati RAW delle finestre", e)
                 }
             } else {
-                Log.e(TAG, "AWS Remote Endpoint rejected request: ${response.code()} - ${response.errorBody()?.string()}")
+                Log.d(TAG, "Nessun dato RAW intercettato in cache RAM negli ultimi 5 minuti.")
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Network transport failure encountered during background payload upload", e)
         }
+
+        withContext(Dispatchers.Main) {
+            val msg = if (forcedAlert != null) "🚨 IMMEDIATE Cloud Sync Triggered!" else "Cloud Sync Successful!"
+            Toast.makeText(applicationContext, "$msg", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Estrae i punti medi accumulati in RAM ed esegue il flush atomico della cache
+    private fun fetchNewRawRecordsFromCache(uId: String): Pair<List<AwsRawRecord>, Long> {
+        val rawList = mutableListOf<AwsRawRecord>()
+
+        // Scarica e pulisce atomicamente la CopyOnWriteArrayList interna
+        val accelCache = IntercettaFinestrePredizione.getInstance().flushCache()
+
+        val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault()).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+
+        var highestTimestamp = 0L
+
+        for (point in accelCache) {
+            val ts = point.timestamp
+            if (ts > highestTimestamp) {
+                highestTimestamp = ts
+            }
+
+            rawList.add(
+                AwsRawRecord(
+                    userId = uId,
+                    timestamp = isoFormat.format(Date(ts)),
+                    x = point.avgX,
+                    y = point.avgY,
+                    z = point.avgZ
+                )
+            )
+        }
+
+        return Pair(rawList, highestTimestamp)
     }
 
     private fun fetchNewRecordsStrict(
@@ -274,7 +338,7 @@ class AwsSyncService : Service() {
             }
         }
 
-        // 3. UNIVERSAL DEDICATED EVENT TRIGGER BLOCK
+        // 3. UNIVERSAL DEDICATED EVENT TRIGGER BLOCK (Solo tabelle aggregate normalizzate)
         if (forcedAlert != null) {
             val currentNowMs = System.currentTimeMillis()
             Log.w(TAG, "Forced pipeline event detected ($forcedAlert). Appending a separate dedicated record at exact current timestamp.")
@@ -380,7 +444,6 @@ class AwsSyncService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        Log.d(TAG, "Task removed from Task Manager.")
         stopSelf()
     }
 }

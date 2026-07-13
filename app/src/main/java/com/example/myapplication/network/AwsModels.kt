@@ -19,3 +19,17 @@ data class AwsRecord(
 data class AwsSyncPayload(
     @SerializedName("records") val records: List<AwsRecord>
 )
+
+// Modello per il singolo record grezzo dello Shimmer richiesto dal nuovo endpoint
+data class AwsRawRecord(
+    @SerializedName("userId") val userId: String,
+    @SerializedName("timestamp") val timestamp: String, // Formato ISO 8601 UTC
+    @SerializedName("x") val x: Double,
+    @SerializedName("y") val y: Double,
+    @SerializedName("z") val z: Double
+)
+
+// Involucro per consentire l'invio massivo in un'unica richiesta HTTP POST (consigliato per dati RAW)
+data class AwsRawSyncPayload(
+    @SerializedName("records") val records: List<AwsRawRecord>
+)
