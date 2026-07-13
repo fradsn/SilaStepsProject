@@ -43,6 +43,12 @@ class AwsSyncService : Service() {
 
         private const val SYNC_INTERVAL_MS = 5 * 60 * 1000L
 
+        // Costanti di validità biologica mutate da HealthMonitoringService
+        private const val VITAL_VALIDITY_WINDOW_BPM = 60 * 1000L       // Tolleranza 1 minuto
+        private const val VITAL_VALIDITY_WINDOW_PRESSURE = 5 * 60 * 1000L // Tolleranza 5 minuti
+        private const val SPO2_WINDOW = 30 * 1000L
+        private const val GAP_WINDOW = 5 * 1000L
+
         // Actions and Extras matching exactly with the Profile and Health services pipeline
         const val ACTION_TRIGGER_IMMEDIATE_SYNC = "com.example.myapplication.TRIGGER_IMMEDIATE_SYNC"
         const val EXTRA_ALERT_TYPE = "EXTRA_ALERT_TYPE"
@@ -157,7 +163,13 @@ class AwsSyncService : Service() {
         val database = dbHelper.readableDatabase
         val uniqueTimestamps = mutableSetOf<Long>()
 
-        // 1. Recovering fresh timestamps from local tables cursors
+        // 1. Calcolo della finestra di validità dell'ossigeno basata sul ciclo hardware reale configurato
+        val sharedPrefRing = getSharedPreferences("RingPrefs", Context.MODE_PRIVATE)
+        val currentBpmWindowMs = sharedPrefRing.getLong("auto_bpm_window_ms", 200 * 1000L)
+        val totalCycleTimeMs = currentBpmWindowMs + SPO2_WINDOW + (GAP_WINDOW * 2)
+        val dynamicOxygenValidityWindow = (totalCycleTimeMs * 1.5).toLong()
+
+        // Recovering fresh timestamps from local tables cursors
         val cursorBpm = database.rawQuery("SELECT timestamp FROM bpm WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
         while (cursorBpm.moveToNext()) { uniqueTimestamps.add(cursorBpm.getLong(0)) }
         cursorBpm.close()
@@ -178,7 +190,6 @@ class AwsSyncService : Service() {
         while (cursorPosition.moveToNext()) { uniqueTimestamps.add(cursorPosition.getLong(0)) }
         cursorPosition.close()
 
-        // INTEGRATION: Fetch timestamps from the new real steps database table
         val cursorSteps = database.rawQuery("SELECT timestamp FROM steps WHERE timestamp > ?", arrayOf(lastTimestamp.toString()))
         while (cursorSteps.moveToNext()) { uniqueTimestamps.add(cursorSteps.getLong(0)) }
         cursorSteps.close()
@@ -186,15 +197,6 @@ class AwsSyncService : Service() {
         val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault()).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }
-
-        // Context trackers for the "last known value" pattern
-        var lastKnownBpm = 0
-        var lastKnownSpo2 = 0
-        var lastKnownPressure = "0/0"
-        var lastKnownLatitude = 0.0
-        var lastKnownLongitude = 0.0
-        var lastKnownActivity = "UNKNOWN"
-        var lastKnownSteps = 0
 
         var highestTimestampInBatch = lastTimestamp
 
@@ -204,18 +206,43 @@ class AwsSyncService : Service() {
             highestTimestampInBatch = sortedTimestamps.last()
 
             for (ts in sortedTimestamps) {
-                val cBpm = database.rawQuery("SELECT bpm FROM bpm WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
-                if (cBpm.moveToFirst()) { lastKnownBpm = cBpm.getInt(0) }
+                var lastKnownBpm = 0
+                var lastKnownSpo2 = 0
+                var lastKnownPressure = "0/0"
+                var lastKnownLatitude = 0.0
+                var lastKnownLongitude = 0.0
+                var lastKnownActivity = "UNKNOWN"
+                var lastKnownSteps = 0
+
+                // Estrazione parametri vitali condizionata dalle finestre di tolleranza stringenti
+                val cBpm = database.rawQuery("SELECT bpm, timestamp FROM bpm WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
+                if (cBpm.moveToFirst()) {
+                    val actualBpmTs = cBpm.getLong(1)
+                    if (ts - actualBpmTs <= VITAL_VALIDITY_WINDOW_BPM) {
+                        lastKnownBpm = cBpm.getInt(0)
+                    }
+                }
                 cBpm.close()
 
-                val cO2 = database.rawQuery("SELECT value FROM o2 WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
-                if (cO2.moveToFirst()) { lastKnownSpo2 = cO2.getInt(0) }
+                val cO2 = database.rawQuery("SELECT value, timestamp FROM o2 WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
+                if (cO2.moveToFirst()) {
+                    val actualO2Ts = cO2.getLong(1)
+                    if (ts - actualO2Ts <= dynamicOxygenValidityWindow) {
+                        lastKnownSpo2 = cO2.getInt(0)
+                    }
+                }
                 cO2.close()
 
-                val cPress = database.rawQuery("SELECT systolic, diastolic FROM pressure WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
-                if (cPress.moveToFirst()) { lastKnownPressure = "${cPress.getInt(0)}/${cPress.getInt(1)}" }
+                val cPress = database.rawQuery("SELECT systolic, diastolic, timestamp FROM pressure WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
+                if (cPress.moveToFirst()) {
+                    val actualPressTs = cPress.getLong(2)
+                    if (ts - actualPressTs <= VITAL_VALIDITY_WINDOW_PRESSURE) {
+                        lastKnownPressure = "${cPress.getInt(0)}/${cPress.getInt(1)}"
+                    }
+                }
                 cPress.close()
 
+                // Parametri di tracciamento continuo (mantengono l'ultimo noto assoluto del record)
                 val cAct = database.rawQuery("SELECT activity FROM prediction WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
                 if (cAct.moveToFirst()) { lastKnownActivity = cAct.getString(0) }
                 cAct.close()
@@ -227,7 +254,6 @@ class AwsSyncService : Service() {
                 }
                 cPos.close()
 
-                // INTEGRATION: Extract the last recorded real steps up to this timeline entry item
                 val cSt = database.rawQuery("SELECT value FROM steps WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", arrayOf(ts.toString()))
                 if (cSt.moveToFirst()) { lastKnownSteps = cSt.getInt(0) }
                 cSt.close()
@@ -240,7 +266,7 @@ class AwsSyncService : Service() {
                     bloodPressure = lastKnownPressure,
                     latitude = lastKnownLatitude,
                     longitude = lastKnownLongitude,
-                    steps = lastKnownSteps, // Real steps data from SQLite
+                    steps = lastKnownSteps,
                     alert = "no_alert",
                     timestamp = isoFormat.format(Date(ts))
                 )
@@ -253,35 +279,55 @@ class AwsSyncService : Service() {
             val currentNowMs = System.currentTimeMillis()
             Log.w(TAG, "Forced pipeline event detected ($forcedAlert). Appending a separate dedicated record at exact current timestamp.")
 
-            if (uniqueTimestamps.isEmpty()) {
-                val cBpm = database.rawQuery("SELECT bpm FROM bpm ORDER BY timestamp DESC LIMIT 1", null)
-                if (cBpm.moveToFirst()) { lastKnownBpm = cBpm.getInt(0) }
-                cBpm.close()
+            var lastKnownBpm = 0
+            var lastKnownSpo2 = 0
+            var lastKnownPressure = "0/0"
+            var lastKnownLatitude = 0.0
+            var lastKnownLongitude = 0.0
+            var lastKnownActivity = "UNKNOWN"
+            var lastKnownSteps = 0
 
-                val cO2 = database.rawQuery("SELECT value FROM o2 ORDER BY timestamp DESC LIMIT 1", null)
-                if (cO2.moveToFirst()) { lastKnownSpo2 = cO2.getInt(0) }
-                cO2.close()
-
-                val cPress = database.rawQuery("SELECT systolic, diastolic FROM pressure ORDER BY timestamp DESC LIMIT 1", null)
-                if (cPress.moveToFirst()) { lastKnownPressure = "${cPress.getInt(0)}/${cPress.getInt(1)}" }
-                cPress.close()
-
-                val cAct = database.rawQuery("SELECT activity FROM prediction ORDER BY timestamp DESC LIMIT 1", null)
-                if (cAct.moveToFirst()) { lastKnownActivity = cAct.getString(0) }
-                cAct.close()
-
-                val cPos = database.rawQuery("SELECT latitude, longitude FROM position ORDER BY timestamp DESC LIMIT 1", null)
-                if (cPos.moveToFirst()) {
-                    lastKnownLatitude = cPos.getDouble(0)
-                    lastKnownLongitude = cPos.getDouble(1)
+            val cBpm = database.rawQuery("SELECT bpm, timestamp FROM bpm ORDER BY timestamp DESC LIMIT 1", null)
+            if (cBpm.moveToFirst()) {
+                val actualBpmTs = cBpm.getLong(1)
+                if (currentNowMs - actualBpmTs <= VITAL_VALIDITY_WINDOW_BPM) {
+                    lastKnownBpm = cBpm.getInt(0)
                 }
-                cPos.close()
-
-                // INTEGRATION: Extract latest steps entry for the emergency fallback packet
-                val cSt = database.rawQuery("SELECT value FROM steps ORDER BY timestamp DESC LIMIT 1", null)
-                if (cSt.moveToFirst()) { lastKnownSteps = cSt.getInt(0) }
-                cSt.close()
             }
+            cBpm.close()
+
+            val cO2 = database.rawQuery("SELECT value, timestamp FROM o2 ORDER BY timestamp DESC LIMIT 1", null)
+            if (cO2.moveToFirst()) {
+                val actualO2Ts = cO2.getLong(1)
+                if (currentNowMs - actualO2Ts <= dynamicOxygenValidityWindow) {
+                    lastKnownSpo2 = cO2.getInt(0)
+                }
+            }
+            cO2.close()
+
+            val cPress = database.rawQuery("SELECT systolic, diastolic, timestamp FROM pressure ORDER BY timestamp DESC LIMIT 1", null)
+            if (cPress.moveToFirst()) {
+                val actualPressTs = cPress.getLong(2)
+                if (currentNowMs - actualPressTs <= VITAL_VALIDITY_WINDOW_PRESSURE) {
+                    lastKnownPressure = "${cPress.getInt(0)}/${cPress.getInt(1)}"
+                }
+            }
+            cPress.close()
+
+            val cAct = database.rawQuery("SELECT activity FROM prediction ORDER BY timestamp DESC LIMIT 1", null)
+            if (cAct.moveToFirst()) { lastKnownActivity = cAct.getString(0) }
+            cAct.close()
+
+            val cPos = database.rawQuery("SELECT latitude, longitude FROM position ORDER BY timestamp DESC LIMIT 1", null)
+            if (cPos.moveToFirst()) {
+                lastKnownLatitude = cPos.getDouble(0)
+                lastKnownLongitude = cPos.getDouble(1)
+            }
+            cPos.close()
+
+            val cSt = database.rawQuery("SELECT value FROM steps ORDER BY timestamp DESC LIMIT 1", null)
+            if (cSt.moveToFirst()) { lastKnownSteps = cSt.getInt(0) }
+            cSt.close()
 
             val finalAlertString = if (!customMessage.isNullOrBlank()) {
                 "$forcedAlert | Note: $customMessage"
@@ -297,7 +343,7 @@ class AwsSyncService : Service() {
                 bloodPressure = lastKnownPressure,
                 latitude = lastKnownLatitude,
                 longitude = lastKnownLongitude,
-                steps = lastKnownSteps, // Real steps data from SQLite
+                steps = lastKnownSteps,
                 alert = finalAlertString,
                 timestamp = isoFormat.format(Date(currentNowMs))
             )
