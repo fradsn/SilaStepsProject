@@ -27,6 +27,7 @@
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
     <uses-feature android:name="android.hardware.bluetooth" android:required="true" />
 
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <application
         android:name=".MyApplication"
         android:allowBackup="true"
@@ -73,6 +74,8 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+
 
     </application>
 </manifest>

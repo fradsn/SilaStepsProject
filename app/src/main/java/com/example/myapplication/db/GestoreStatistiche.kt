@@ -9,6 +9,10 @@ import com.example.myapplication.db.dao.PressureDao
 import com.example.myapplication.db.dao.StepDao
 import com.example.myapplication.db.models.PredictionEntry
 
+
+import com.example.myapplication.db.dao.StepHistoryDao
+import com.example.myapplication.db.models.DailyStepEntry
+import com.example.myapplication.db.models.HourlyStepEntry
 class GestoreStatistiche private constructor(context: Context) {
 
     companion object {
@@ -36,6 +40,7 @@ class GestoreStatistiche private constructor(context: Context) {
     private val predictionDao = PredictionDao(context)
     private val positionDao = PositionDao(context)
     private val stepDao = StepDao(context)
+    private val stepHistoryDao = StepHistoryDao(context)
 
     fun salvaBpm(bpm: Int) = bpmDao.insert(bpm)
     fun salvaPressione(s: Int, d: Int) = pressureDao.insert(s, d)
@@ -44,21 +49,39 @@ class GestoreStatistiche private constructor(context: Context) {
 
     fun salvaPredizione(activity: String, confidence: Int) {
         predictionDao.insert(activity, confidence)
-
-        if (activity == "Walking" || activity == "Jogging"){
-            val lastRecord = stepDao.getLastRecord()
-            if (lastRecord != null)
-                salvaPassi(lastRecord.tot + 2)
-        }
     }
 
     fun salvaPassi(value: Int) = stepDao.insert(value)
-
+    fun salvaStoricoPassi(
+        dailyEntries: List<DailyStepEntry>,
+        hourlyEntries: List<HourlyStepEntry>
+    ) {
+        stepHistoryDao.upsertHistory(
+            dailyEntries = dailyEntries,
+            hourlyEntries = hourlyEntries
+        )
+    }
     fun getBpm() = bpmDao.getAll()
     fun getPressioni() = pressureDao.getAll()
     fun getO2() = o2Dao.getAll()
     fun getPrediction(): List<PredictionEntry> = predictionDao.getAll()
     fun getSteps() = stepDao.getAll()
+    fun getPassiGiornalieri(
+        firstDay: String,
+        lastDay: String
+    ): List<DailyStepEntry> {
+        return stepHistoryDao.getDailyBetween(
+            firstDay = firstDay,
+            lastDay = lastDay
+        )
+    }
+
+    fun getPassiOrari(
+        day: String
+    ): List<HourlyStepEntry> {
+        return stepHistoryDao.getHourlyForDay(day)
+    }
+
     fun getPositions() = positionDao.getAll()
 
     fun getActivityCount() = predictionDao.getActivityCount()

@@ -3,8 +3,8 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fillViewport="true"
-    android:background="@color/background_dark">
+    android:background="@color/background_dark"
+    android:fillViewport="true">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -15,46 +15,46 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
             android:text="Health Dashboard"
             android:textColor="@color/text_primary"
             android:textSize="26sp"
-            android:textStyle="bold"
-            android:layout_marginTop="12dp"/>
+            android:textStyle="bold" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginBottom="24dp"
             android:text="Real-time biometric monitoring"
             android:textColor="@color/text_secondary"
-            android:textSize="14sp"
-            android:layout_marginBottom="24dp"/>
+            android:textSize="14sp" />
 
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardCornerRadius="24dp"
-            app:cardBackgroundColor="@color/surface_dark"
-            app:strokeWidth="1dp"
-            app:strokeColor="@color/surface_variant_dark"
             android:layout_marginBottom="20dp"
-            app:cardElevation="2dp">
+            app:cardBackgroundColor="@color/surface_dark"
+            app:cardCornerRadius="24dp"
+            app:cardElevation="2dp"
+            app:strokeColor="@color/surface_variant_dark"
+            app:strokeWidth="1dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:gravity="center_horizontal"
                 android:orientation="vertical"
-                android:padding="24dp"
-                android:gravity="center_horizontal">
+                android:padding="24dp">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_marginBottom="24dp"
+                    android:letterSpacing="0.1"
                     android:text="DETECTED ACTIVITY (SHIMMER)"
                     android:textColor="@color/health_shimmer"
                     android:textSize="12sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.1"
-                    android:layout_marginBottom="24dp"/>
+                    android:textStyle="bold" />
 
                 <FrameLayout
                     android:layout_width="140dp"
@@ -88,31 +88,32 @@
                         android:layout_gravity="center"
                         android:src="@drawable/ic_activity_sitting"
                         app:tint="@color/text_primary" />
+
                 </FrameLayout>
 
                 <TextView
                     android:id="@+id/tvActivityLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_marginBottom="4dp"
                     android:text="Sitting"
                     android:textColor="@color/text_primary"
                     android:textSize="24sp"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="4dp"/>
+                    android:textStyle="bold" />
 
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
+                    android:layout_marginBottom="16dp"
                     android:gravity="center_vertical"
-                    android:layout_marginBottom="16dp">
+                    android:orientation="horizontal">
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Confidence: "
                         android:textColor="@color/text_secondary"
-                        android:textSize="13sp"/>
+                        android:textSize="13sp" />
 
                     <TextView
                         android:id="@+id/tvConfidenceValue"
@@ -121,7 +122,8 @@
                         android:text="100%"
                         android:textColor="@color/health_shimmer"
                         android:textSize="13sp"
-                        android:textStyle="bold"/>
+                        android:textStyle="bold" />
+
                 </LinearLayout>
 
                 <ProgressBar
@@ -131,31 +133,102 @@
                     android:layout_height="6dp"
                     android:max="100"
                     android:progress="100"
-                    android:progressTint="@color/health_shimmer"
-                    android:progressBackgroundTint="@color/surface_variant_dark" />
+                    android:progressBackgroundTint="@color/surface_variant_dark"
+                    android:progressTint="@color/health_shimmer" />
 
             </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            app:cardBackgroundColor="@color/surface_dark"
+            app:cardCornerRadius="18dp"
+            app:cardElevation="2dp"
+            app:strokeColor="@color/surface_variant_dark"
+            app:strokeWidth="1dp">
+
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="16dp">
+
+                <ImageView
+                    android:id="@+id/ivStepsIcon"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_centerVertical="true"
+                    android:contentDescription="Daily Steps"
+                    android:src="@drawable/ic_activity_walking"
+                    app:tint="@color/primary_neon" />
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_centerVertical="true"
+                    android:layout_marginStart="16dp"
+                    android:layout_toEndOf="@id/ivStepsIcon"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Daily Steps"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="13sp" />
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/tvDailyStepsValue"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0"
+                            android:textColor="@color/text_primary"
+                            android:textSize="26sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="4dp"
+                            android:text="steps"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="14sp" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+            </RelativeLayout>
+
         </com.google.android.material.card.MaterialCardView>
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_marginBottom="12dp"
+            android:letterSpacing="0.1"
             android:text="BIOMETRIC METRICS (SMART RING)"
             android:textColor="@color/text_secondary"
             android:textSize="12sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.1"
-            android:layout_marginBottom="12dp"
-            android:layout_marginStart="4dp"/>
+            android:textStyle="bold" />
 
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardCornerRadius="18dp"
+            android:layout_marginBottom="12dp"
             app:cardBackgroundColor="@color/surface_dark"
-            app:strokeWidth="1dp"
+            app:cardCornerRadius="18dp"
             app:strokeColor="@color/surface_variant_dark"
-            android:layout_marginBottom="12dp">
+            app:strokeWidth="1dp">
 
             <RelativeLayout
                 android:layout_width="match_parent"
@@ -166,17 +239,17 @@
                     android:id="@+id/ivHeartIcon"
                     android:layout_width="32dp"
                     android:layout_height="32dp"
+                    android:layout_centerVertical="true"
                     android:src="@drawable/ic_favorite"
-                    app:tint="@color/health_bpm"
-                    android:layout_centerVertical="true"/>
+                    app:tint="@color/health_bpm" />
 
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:layout_toEndOf="@id/ivHeartIcon"
+                    android:layout_centerVertical="true"
                     android:layout_marginStart="16dp"
-                    android:layout_centerVertical="true">
+                    android:layout_toEndOf="@id/ivHeartIcon"
+                    android:orientation="vertical">
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -188,8 +261,8 @@
                     <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical">
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
 
                         <TextView
                             android:id="@+id/tvBpmValue"
@@ -203,11 +276,13 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
+                            android:layout_marginStart="4dp"
                             android:text=" bpm"
                             android:textColor="@color/text_secondary"
-                            android:textSize="14sp"
-                            android:layout_marginStart="4dp"/>
+                            android:textSize="14sp" />
+
                     </LinearLayout>
+
                 </LinearLayout>
 
                 <com.google.android.material.button.MaterialButton
@@ -218,21 +293,23 @@
                     android:layout_alignParentEnd="true"
                     android:layout_centerVertical="true"
                     android:text="START BPM"
-                    android:textSize="12sp"
                     android:textColor="@color/health_bpm"
+                    android:textSize="12sp"
                     app:backgroundTint="@color/primary_container"
                     app:cornerRadius="12dp" />
+
             </RelativeLayout>
+
         </com.google.android.material.card.MaterialCardView>
 
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardCornerRadius="18dp"
+            android:layout_marginBottom="12dp"
             app:cardBackgroundColor="@color/surface_dark"
-            app:strokeWidth="1dp"
+            app:cardCornerRadius="18dp"
             app:strokeColor="@color/surface_variant_dark"
-            android:layout_marginBottom="12dp">
+            app:strokeWidth="1dp">
 
             <RelativeLayout
                 android:layout_width="match_parent"
@@ -243,17 +320,17 @@
                     android:id="@+id/ivO2Icon"
                     android:layout_width="32dp"
                     android:layout_height="32dp"
+                    android:layout_centerVertical="true"
                     android:src="@drawable/ic_blood_oxygen"
-                    app:tint="@color/health_o2"
-                    android:layout_centerVertical="true"/>
+                    app:tint="@color/health_o2" />
 
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:layout_toEndOf="@id/ivO2Icon"
+                    android:layout_centerVertical="true"
                     android:layout_marginStart="16dp"
-                    android:layout_centerVertical="true">
+                    android:layout_toEndOf="@id/ivO2Icon"
+                    android:orientation="vertical">
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -270,6 +347,7 @@
                         android:textColor="@color/text_primary"
                         android:textSize="26sp"
                         android:textStyle="bold" />
+
                 </LinearLayout>
 
                 <com.google.android.material.button.MaterialButton
@@ -280,21 +358,23 @@
                     android:layout_alignParentEnd="true"
                     android:layout_centerVertical="true"
                     android:text="MEASURE O₂"
-                    android:textSize="12sp"
                     android:textColor="@color/health_o2"
+                    android:textSize="12sp"
                     app:backgroundTint="@color/primary_container"
                     app:cornerRadius="12dp" />
+
             </RelativeLayout>
+
         </com.google.android.material.card.MaterialCardView>
 
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardCornerRadius="18dp"
+            android:layout_marginBottom="12dp"
             app:cardBackgroundColor="@color/surface_dark"
-            app:strokeWidth="1dp"
+            app:cardCornerRadius="18dp"
             app:strokeColor="@color/surface_variant_dark"
-            android:layout_marginBottom="12dp">
+            app:strokeWidth="1dp">
 
             <RelativeLayout
                 android:layout_width="match_parent"
@@ -305,17 +385,17 @@
                     android:id="@+id/ivBpIcon"
                     android:layout_width="32dp"
                     android:layout_height="32dp"
+                    android:layout_centerVertical="true"
                     android:src="@drawable/ic_blood_pressure"
-                    app:tint="@color/health_pressure"
-                    android:layout_centerVertical="true"/>
+                    app:tint="@color/health_pressure" />
 
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:layout_toEndOf="@id/ivBpIcon"
+                    android:layout_centerVertical="true"
                     android:layout_marginStart="16dp"
-                    android:layout_centerVertical="true">
+                    android:layout_toEndOf="@id/ivBpIcon"
+                    android:orientation="vertical">
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -327,8 +407,8 @@
                     <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical">
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
 
                         <TextView
                             android:id="@+id/tvBpValue"
@@ -342,11 +422,13 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
+                            android:layout_marginStart="4dp"
                             android:text=" mmHg"
                             android:textColor="@color/text_secondary"
-                            android:textSize="14sp"
-                            android:layout_marginStart="4dp"/>
+                            android:textSize="14sp" />
+
                     </LinearLayout>
+
                 </LinearLayout>
 
                 <com.google.android.material.button.MaterialButton
@@ -357,22 +439,24 @@
                     android:layout_alignParentEnd="true"
                     android:layout_centerVertical="true"
                     android:text="MEASURE BP"
-                    android:textSize="12sp"
                     android:textColor="@color/health_pressure"
+                    android:textSize="12sp"
                     app:backgroundTint="@color/primary_container"
                     app:cornerRadius="12dp" />
+
             </RelativeLayout>
+
         </com.google.android.material.card.MaterialCardView>
 
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/cardAutoMeasurement"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardCornerRadius="18dp"
+            android:layout_marginBottom="32dp"
             app:cardBackgroundColor="@color/surface_dark"
-            app:strokeWidth="1dp"
+            app:cardCornerRadius="18dp"
             app:strokeColor="@color/surface_variant_dark"
-            android:layout_marginBottom="32dp">
+            app:strokeWidth="1dp">
 
             <RelativeLayout
                 android:layout_width="match_parent"
@@ -383,34 +467,35 @@
                     android:id="@+id/ivCloudIcon"
                     android:layout_width="32dp"
                     android:layout_height="32dp"
+                    android:layout_centerVertical="true"
                     android:src="@drawable/ic_cloud_ml"
-                    app:tint="@color/text_primary"
-                    android:layout_centerVertical="true"/>
+                    app:tint="@color/text_primary" />
 
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:layout_toEndOf="@id/ivCloudIcon"
-                    android:layout_toStartOf="@+id/switchAutoMeasurement"
+                    android:layout_centerVertical="true"
                     android:layout_marginStart="16dp"
                     android:layout_marginEnd="16dp"
-                    android:layout_centerVertical="true">
+                    android:layout_toStartOf="@+id/switchAutoMeasurement"
+                    android:layout_toEndOf="@id/ivCloudIcon"
+                    android:orientation="vertical">
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Auto Measurement"
                         android:textColor="@color/text_primary"
-                        android:textStyle="bold"
-                        android:textSize="16sp" />
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Cyclical measurement of                 BPM and SpO2"
+                        android:text="Cyclical measurement of BPM and SpO2"
                         android:textColor="@color/text_secondary"
                         android:textSize="12sp" />
+
                 </LinearLayout>
 
                 <com.google.android.material.switchmaterial.SwitchMaterial
@@ -419,8 +504,11 @@
                     android:layout_height="wrap_content"
                     android:layout_alignParentEnd="true"
                     android:layout_centerVertical="true" />
+
             </RelativeLayout>
+
         </com.google.android.material.card.MaterialCardView>
 
     </LinearLayout>
+
 </ScrollView>

@@ -31,7 +31,7 @@ import com.example.myapplication.R
 import com.example.myapplication.db.GestoreStatistiche
 import com.example.myapplication.services.HealthMonitoringService
 import com.google.android.material.switchmaterial.SwitchMaterial
-
+import java.time.LocalDate
 class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSessionManager.Observer {
 
     // Trasformati in variabili d'istanza dinamiche per evitare la cache statica tra utenti differenti
@@ -40,7 +40,7 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
     private var lastBP: String = "-- / --"
 
     private lateinit var gestoreStatistiche: GestoreStatistiche
-
+    private lateinit var tvDailyStepsValue: TextView
     private lateinit var tvBpmValue: TextView
     private lateinit var tvSpO2Value: TextView
     private lateinit var tvBpValue: TextView
@@ -223,6 +223,7 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
         ivHeartIcon = view.findViewById(R.id.ivHeartIcon)
         ivO2Icon = view.findViewById(R.id.ivO2Icon)
         ivBpIcon = view.findViewById(R.id.ivBpIcon)
+        tvDailyStepsValue = view.findViewById(R.id.tvDailyStepsValue)
     }
 
     private fun updateManualButtonsState(isAutoActive: Boolean) {
@@ -522,6 +523,23 @@ class CurrentActivityFragment : Fragment(), SmartRingManager.SmartRingListener, 
                 lastBP = "-- / --"
             }
             tvBpValue.text = lastBP
+
+            val today = LocalDate.now().toString()
+
+            val dailySteps = gestoreStatistiche
+                .getPassiGiornalieri(
+                    firstDay = today,
+                    lastDay = today
+                )
+                .firstOrNull()
+                ?.steps
+                ?: gestoreStatistiche
+                    .getSteps()
+                    .lastOrNull()
+                    ?.tot
+                ?: 0
+
+            tvDailyStepsValue.text = dailySteps.toString()
         } catch (e: Exception) {
             e.printStackTrace()
         }

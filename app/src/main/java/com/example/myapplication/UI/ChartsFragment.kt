@@ -19,10 +19,15 @@ import com.example.myapplication.BT.ring.SmartRingManager
 import com.example.myapplication.Motion.session.MotionSessionManager
 import com.example.myapplication.R
 import com.example.myapplication.db.GestoreStatistiche
+import com.github.mikephil.charting.charts.BarChart
 import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.charts.PieChart
+import com.github.mikephil.charting.components.AxisBase
 import com.github.mikephil.charting.components.MarkerView
 import com.github.mikephil.charting.components.XAxis
+import com.github.mikephil.charting.data.BarData
+import com.github.mikephil.charting.data.BarDataSet
+import com.github.mikephil.charting.data.BarEntry
 import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
@@ -30,8 +35,11 @@ import com.github.mikephil.charting.data.PieData
 import com.github.mikephil.charting.data.PieDataSet
 import com.github.mikephil.charting.data.PieEntry
 import com.github.mikephil.charting.formatter.PercentFormatter
+import com.github.mikephil.charting.formatter.ValueFormatter
 import com.github.mikephil.charting.highlight.Highlight
 import com.github.mikephil.charting.utils.MPPointF
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.button.MaterialButtonToggleGroup
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.BoundingBox
@@ -39,6 +47,15 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
+import java.text.NumberFormat
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
+import java.time.temporal.ChronoUnit
+import java.time.temporal.TemporalAdjusters
+import java.util.Locale
+import kotlin.math.roundToInt
 
 class ChartsFragment : Fragment() {
 
@@ -46,22 +63,36 @@ class ChartsFragment : Fragment() {
     private lateinit var BPMChart: LineChart
     private lateinit var O2Chart: LineChart
     private lateinit var pressureChart: LineChart
-    private lateinit var stepsChart: LineChart
+    private lateinit var stepsChart: BarChart
     private lateinit var map: MapView
 
     private lateinit var tvCurrentBpm: TextView
     private lateinit var tvLastO2: TextView
     private lateinit var tvLastPressure: TextView
+
     private lateinit var tvTotalSteps: TextView
+    private lateinit var tvAverageSteps: TextView
+    private lateinit var tvStepCompletion: TextView
+    private lateinit var tvStepDistance: TextView
+    private lateinit var tvStepCalories: TextView
+    private lateinit var tvStepPeriodLabel: TextView
+
+    private lateinit var stepPeriodToggle: MaterialButtonToggleGroup
+    private lateinit var btnPreviousStepPeriod: MaterialButton
+    private lateinit var btnNextStepPeriod: MaterialButton
 
     private lateinit var cbLockScrollBpm: CheckBox
     private lateinit var cbLockScrollO2: CheckBox
     private lateinit var cbLockScrollPressure: CheckBox
     private lateinit var cbEnableHistory: CheckBox
 
-    private val activityLabels = listOf("Walking", "Jogging", "Sitting", "Standing")
+    private val activityLabels = listOf(
+        "Walking",
+        "Jogging",
+        "Sitting",
+        "Standing"
+    )
 
-    // Mappatura dinamica basata sulla nuova tavolozza dei colori coerenti
     private val activityColorMap by lazy {
         mapOf(
             "Walking" to resources.getColor(R.color.primary_neon),
@@ -77,32 +108,69 @@ class ChartsFragment : Fragment() {
     private var isO2FirstLoad = true
     private var isPressureFirstLoad = true
     private var isPieChartFirstLoad = true
-    private var isStepsFirstLoad = true
+
+    private enum class StepPeriod {
+        DAY,
+        WEEK,
+        MONTH
+    }
+
+    private data class StepChartData(
+        val values: List<Int>,
+        val labels: List<String>,
+        val totalSteps: Int,
+        val daysForAverage: Int,
+        val periodLabel: String
+    )
+
+    private var selectedStepPeriod = StepPeriod.DAY
+    private var selectedStepDate: LocalDate = LocalDate.now()
+
+    /*
+     * Parametri utilizzati per le stime.
+     * 8000 passi rappresentano l'obiettivo giornaliero.
+     * Ogni passo viene stimato in circa 70 centimetri.
+     * Le calorie sono stimate in 0,04 kcal per passo.
+     */
+    private val stepLocale = Locale.ENGLISH
+    private val dailyStepGoal = 8_000
+    private val stepLengthKm = 0.0007
+    private val caloriesPerStep = 0.04
 
     private val pollHandler = Handler(Looper.getMainLooper())
+
     private val pollRunnableStandard = object : Runnable {
         override fun run() {
             aggiornaGraficiStandard()
-            pollHandler.postDelayed(this, 2000)
+            pollHandler.postDelayed(this, 2_000)
         }
     }
+
     private val pollRunnableDelay = object : Runnable {
         override fun run() {
             aggiornaGraficiDelay()
-            pollHandler.postDelayed(this, 60 * 1000)
+            pollHandler.postDelayed(this, 60_000)
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val ctx = requireContext()
-        gestoreStatistiche = GestoreStatistiche.getInstance(ctx)
 
-        // 1) Inizializza OSMDroid PRIMA del layout
-        Configuration.getInstance().load(ctx, ctx.getSharedPreferences("osmdroid", MODE_PRIVATE))
+        val context = requireContext()
 
-        // 2) Imposta un user-agent valido (fondamentale!)
-        Configuration.getInstance().userAgentValue = ctx.packageName
+        gestoreStatistiche =
+            GestoreStatistiche.getInstance(context)
+
+        Configuration.getInstance().load(
+            context,
+            context.getSharedPreferences(
+                "osmdroid",
+                MODE_PRIVATE
+            )
+        )
+
+        Configuration.getInstance().userAgentValue =
+            context.packageName
     }
 
     override fun onCreateView(
@@ -110,46 +178,119 @@ class ChartsFragment : Fragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        return inflater.inflate(R.layout.fragment_charts, container, false)
+        return inflater.inflate(
+            R.layout.fragment_charts,
+            container,
+            false
+        )
     }
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+    override fun onViewCreated(
+        view: View,
+        savedInstanceState: Bundle?
+    ) {
         super.onViewCreated(view, savedInstanceState)
 
         BPMChart = view.findViewById(R.id.BPMChart)
         tvCurrentBpm = view.findViewById(R.id.tvCurrentBpm)
-        cbLockScrollBpm = view.findViewById(R.id.cbLockScrollBpm)
+        cbLockScrollBpm =
+            view.findViewById(R.id.cbLockScrollBpm)
 
         O2Chart = view.findViewById(R.id.O2Chart)
         tvLastO2 = view.findViewById(R.id.tvLastO2)
-        cbLockScrollO2 = view.findViewById(R.id.cbLockScrollO2)
+        cbLockScrollO2 =
+            view.findViewById(R.id.cbLockScrollO2)
 
-        pressureChart = view.findViewById(R.id.bloodPressureChart)
-        tvLastPressure = view.findViewById(R.id.tvLastPressure)
-        cbLockScrollPressure = view.findViewById(R.id.cbLockScrollPressure)
+        pressureChart =
+            view.findViewById(R.id.bloodPressureChart)
+
+        tvLastPressure =
+            view.findViewById(R.id.tvLastPressure)
+
+        cbLockScrollPressure =
+            view.findViewById(R.id.cbLockScrollPressure)
 
         pieChart = view.findViewById(R.id.activityChart)
+
         setupPieChartStyle()
         refreshPieChart()
 
         map = view.findViewById(R.id.map)
-        cbEnableHistory = view.findViewById(R.id.cbEnableHistory)
+        cbEnableHistory =
+            view.findViewById(R.id.cbEnableHistory)
+
         setupMap()
         drawPath()
 
+        /*
+         * Riferimenti relativi al nuovo grafico dei passi.
+         */
         stepsChart = view.findViewById(R.id.StepsChart)
-        tvTotalSteps = view.findViewById(R.id.tvTotalSteps)
 
-        val customMarker = CustomMarkerView(requireContext(), R.layout.custom_marker_view)
+        tvTotalSteps =
+            view.findViewById(R.id.tvTotalSteps)
+
+        tvAverageSteps =
+            view.findViewById(R.id.tvAverageSteps)
+
+        tvStepCompletion =
+            view.findViewById(R.id.tvStepCompletion)
+
+        tvStepDistance =
+            view.findViewById(R.id.tvStepDistance)
+
+        tvStepCalories =
+            view.findViewById(R.id.tvStepCalories)
+
+        tvStepPeriodLabel =
+            view.findViewById(R.id.tvStepPeriodLabel)
+
+        stepPeriodToggle =
+            view.findViewById(R.id.stepPeriodToggle)
+
+        btnPreviousStepPeriod =
+            view.findViewById(R.id.btnPreviousStepPeriod)
+
+        btnNextStepPeriod =
+            view.findViewById(R.id.btnNextStepPeriod)
+
+        val customMarker = CustomMarkerView(
+            requireContext(),
+            R.layout.custom_marker_view
+        )
+
         BPMChart.marker = customMarker
         O2Chart.marker = customMarker
         pressureChart.marker = customMarker
+        stepsChart.marker = customMarker
 
-        cbLockScrollBpm.setOnCheckedChangeListener { _, isChecked -> if (!isChecked) caricaBpm() }
-        cbLockScrollO2.setOnCheckedChangeListener { _, isChecked -> if (!isChecked) caricaO2() }
-        cbLockScrollPressure.setOnCheckedChangeListener { _, isChecked -> if (!isChecked) caricaPressione() }
-        cbEnableHistory.setOnCheckedChangeListener { _, isChecked -> drawPath() }
+        setupStepsAnalytics()
 
+        cbLockScrollBpm.setOnCheckedChangeListener {
+                _, isChecked ->
+            if (!isChecked) {
+                caricaBpm()
+            }
+        }
+
+        cbLockScrollO2.setOnCheckedChangeListener {
+                _, isChecked ->
+            if (!isChecked) {
+                caricaO2()
+            }
+        }
+
+        cbLockScrollPressure.setOnCheckedChangeListener {
+                _, isChecked ->
+            if (!isChecked) {
+                caricaPressione()
+            }
+        }
+
+        cbEnableHistory.setOnCheckedChangeListener {
+                _, _ ->
+            drawPath()
+        }
 
         isBpmFirstLoad = true
         isO2FirstLoad = true
@@ -157,51 +298,77 @@ class ChartsFragment : Fragment() {
 
         aggiornaGraficiStandard()
         aggiornaGraficiDelay()
+
         pollHandler.post(pollRunnableStandard)
-        pollHandler.post ( pollRunnableDelay )
+        pollHandler.post(pollRunnableDelay)
     }
 
     private fun drawPath() {
         map.overlayManager.clear()
 
-        val positions = gestoreStatistiche.getPositions().sortedBy { it.timestamp }
+        val positions = gestoreStatistiche
+            .getPositions()
+            .sortedBy { it.timestamp }
+
         if (positions.isEmpty()) {
             map.invalidate()
             return
         }
 
-        // Converti in GeoPoint
-        var geoPoints: MutableList<GeoPoint> = mutableListOf()
-        if (!cbEnableHistory.isChecked){
-            val attuale = positions.last()
-            geoPoints.add(GeoPoint(attuale.latitude, attuale.longitude))
+        val geoPoints: MutableList<GeoPoint> =
+            mutableListOf()
+
+        if (!cbEnableHistory.isChecked) {
+            val currentPosition = positions.last()
+
+            geoPoints.add(
+                GeoPoint(
+                    currentPosition.latitude,
+                    currentPosition.longitude
+                )
+            )
         } else {
-            geoPoints = positions.map { GeoPoint(it.latitude, it.longitude) }.toMutableList()
+            geoPoints.addAll(
+                positions.map { position ->
+                    GeoPoint(
+                        position.latitude,
+                        position.longitude
+                    )
+                }
+            )
         }
 
-        // Disegna la polyline
         val polyline = Polyline().apply {
             outlinePaint.color = Color.BLUE
             outlinePaint.strokeWidth = 5f
             setPoints(geoPoints)
         }
+
         map.overlayManager.add(polyline)
 
-        // Aggiungi piccoli punti per ogni posizione
         geoPoints.forEach { point ->
             val marker = Marker(map).apply {
                 position = point
-                icon = ContextCompat.getDrawable(requireContext(), R.drawable.ic_dot)
-                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+
+                icon = ContextCompat.getDrawable(
+                    requireContext(),
+                    R.drawable.ic_dot
+                )
+
+                setAnchor(
+                    Marker.ANCHOR_CENTER,
+                    Marker.ANCHOR_CENTER
+                )
             }
+
             map.overlayManager.add(marker)
         }
 
-        // Calcolo bounding box originale
-        val bounds = BoundingBox.fromGeoPoints(geoPoints)
+        val bounds =
+            BoundingBox.fromGeoPoints(geoPoints)
 
-        // Padding per avere bordi bianchi
-        val padding = 0.0002   // puoi aumentare o diminuire
+        val padding = 0.0002
+
         val paddedBounds = BoundingBox(
             bounds.latNorth + padding,
             bounds.lonEast + padding,
@@ -209,11 +376,13 @@ class ChartsFragment : Fragment() {
             bounds.lonWest - padding
         )
 
-        // Zoom automatico sul percorso
-        map.zoomToBoundingBox(paddedBounds, true)
+        map.zoomToBoundingBox(
+            paddedBounds,
+            true
+        )
 
-        // Limite massimo allo zoom
         val maxZoom = 18.0
+
         if (map.zoomLevelDouble > maxZoom) {
             map.controller.setZoom(maxZoom)
         }
@@ -223,40 +392,61 @@ class ChartsFragment : Fragment() {
 
     private fun setupMap() {
         map.setTileSource(TileSourceFactory.MAPNIK)
-
         map.setMultiTouchControls(false)
         map.isClickable = false
         map.isLongClickable = false
-
-        val controller = map.controller
-        controller.setZoom(15.0)
+        map.controller.setZoom(15.0)
     }
 
     override fun onPause() {
         super.onPause()
-        pollHandler.removeCallbacks(pollRunnableStandard)
-        pollHandler.removeCallbacks(pollRunnableDelay)
+
+        pollHandler.removeCallbacks(
+            pollRunnableStandard
+        )
+
+        pollHandler.removeCallbacks(
+            pollRunnableDelay
+        )
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
-        pollHandler.removeCallbacks(pollRunnableStandard)
-        pollHandler.removeCallbacks(pollRunnableDelay)
+
+        pollHandler.removeCallbacks(
+            pollRunnableStandard
+        )
+
+        pollHandler.removeCallbacks(
+            pollRunnableDelay
+        )
     }
 
     private fun setupPieChartStyle() {
         pieChart.description.isEnabled = false
         pieChart.setUsePercentValues(true)
         pieChart.setHoleColor(Color.TRANSPARENT)
-        pieChart.setCenterTextColor(resources.getColor(R.color.text_primary))
+
+        pieChart.setCenterTextColor(
+            resources.getColor(R.color.text_primary)
+        )
+
         pieChart.setCenterTextSize(14f)
-        pieChart.legend.textColor = resources.getColor(R.color.text_secondary)
-        pieChart.setEntryLabelColor(resources.getColor(R.color.text_primary))
+
+        pieChart.legend.textColor =
+            resources.getColor(R.color.text_secondary)
+
+        pieChart.setEntryLabelColor(
+            resources.getColor(R.color.text_primary)
+        )
+
         pieChart.centerText = "Activities"
     }
 
     private fun refreshPieChart() {
-        val counts = gestoreStatistiche.getActivityCount()
+        val counts =
+            gestoreStatistiche.getActivityCount()
+
         val total = counts.values.sum()
 
         if (total == 0) {
@@ -268,22 +458,38 @@ class ChartsFragment : Fragment() {
 
         val entries = activityLabels.mapNotNull { label ->
             val count = counts[label] ?: 0
-            if (count > 0) PieEntry(count.toFloat(), label) else null
+
+            if (count > 0) {
+                PieEntry(
+                    count.toFloat(),
+                    label
+                )
+            } else {
+                null
+            }
         }
 
         val colors = entries.mapNotNull { entry ->
             activityColorMap[entry.label]
         }
 
-        val dataSet = PieDataSet(entries, "").apply {
+        val dataSet = PieDataSet(
+            entries,
+            ""
+        ).apply {
             this.colors = colors
-            valueTextColor = resources.getColor(R.color.text_primary)
+
+            valueTextColor =
+                resources.getColor(R.color.text_primary)
+
             valueTextSize = 12f
             sliceSpace = 4f
         }
 
         val data = PieData(dataSet).apply {
-            setValueFormatter(PercentFormatter(pieChart))
+            setValueFormatter(
+                PercentFormatter(pieChart)
+            )
         }
 
         pieChart.data = data
@@ -291,7 +497,13 @@ class ChartsFragment : Fragment() {
         pieChart.invalidate()
     }
 
-    private fun configLineChartStyle(chart: LineChart) {
+    /*
+     * Configurazione dei grafici biometrici già esistenti.
+     * Questa parte non viene utilizzata dal grafico dei passi.
+     */
+    private fun configLineChartStyle(
+        chart: LineChart
+    ) {
         chart.description.isEnabled = false
         chart.axisRight.isEnabled = false
         chart.setTouchEnabled(true)
@@ -299,74 +511,145 @@ class ChartsFragment : Fragment() {
         chart.setScaleEnabled(true)
         chart.setPinchZoom(true)
         chart.setDrawGridBackground(false)
-        chart.legend.textColor = resources.getColor(R.color.text_secondary)
-        chart.setNoDataText("Awaiting biometric streaming...")
-        chart.setNoDataTextColor(resources.getColor(R.color.text_secondary))
 
-        chart.setOnTouchListener { v, _ ->
-            v.parent.requestDisallowInterceptTouchEvent(true)
+        chart.legend.textColor =
+            resources.getColor(R.color.text_secondary)
+
+        chart.setNoDataText(
+            "Awaiting biometric streaming..."
+        )
+
+        chart.setNoDataTextColor(
+            resources.getColor(R.color.text_secondary)
+        )
+
+        chart.setOnTouchListener { chartView, _ ->
+            chartView.parent
+                .requestDisallowInterceptTouchEvent(true)
+
             false
         }
 
         chart.xAxis.apply {
             position = XAxis.XAxisPosition.BOTTOM
-            textColor = resources.getColor(R.color.text_secondary)
-            setDrawGridLines(false) // Rimozione griglia verticale pesante
+
+            textColor =
+                resources.getColor(R.color.text_secondary)
+
+            setDrawGridLines(false)
             setDrawAxisLine(false)
+
             granularity = 1f
             labelRotationAngle = -45f
             setAvoidFirstLastClipping(true)
         }
 
         chart.axisLeft.apply {
-            textColor = resources.getColor(R.color.text_secondary)
+            textColor =
+                resources.getColor(R.color.text_secondary)
+
             setDrawGridLines(true)
-            gridColor = resources.getColor(R.color.surface_variant_dark) // Griglia orizzontale soft e soffusa
+
+            gridColor = resources.getColor(
+                R.color.surface_variant_dark
+            )
+
             setDrawAxisLine(false)
         }
     }
 
     private fun caricaBpm() {
-        val listaCompleta = gestoreStatistiche.getBpm()
-        if (listaCompleta.isEmpty()) return
+        val completeList =
+            gestoreStatistiche.getBpm()
 
-        val ultimo = listaCompleta.last()
-        tvCurrentBpm.text = ultimo.bpm.toString()
+        if (completeList.isEmpty()) {
+            return
+        }
 
-        if (cbLockScrollBpm.isChecked) return
+        val lastEntry = completeList.last()
 
-        val lista = listaCompleta.takeLast(300)
-        val timestamps = lista.map { it.timestamp }
-        val entries = lista.mapIndexed { index, item -> Entry(index.toFloat(), item.bpm.toFloat()) }
+        tvCurrentBpm.text =
+            lastEntry.bpm.toString()
 
-        val mainColor = resources.getColor(R.color.health_bpm)
-        val dataSet = LineDataSet(entries, "Heart Rate").apply {
+        if (cbLockScrollBpm.isChecked) {
+            return
+        }
+
+        val list = completeList.takeLast(300)
+
+        val timestamps =
+            list.map { it.timestamp }
+
+        val entries = list.mapIndexed {
+                index, item ->
+            Entry(
+                index.toFloat(),
+                item.bpm.toFloat()
+            )
+        }
+
+        val mainColor =
+            resources.getColor(R.color.health_bpm)
+
+        val dataSet = LineDataSet(
+            entries,
+            "Heart Rate"
+        ).apply {
             color = mainColor
             lineWidth = 3f
             mode = LineDataSet.Mode.CUBIC_BEZIER
             setDrawFilled(true)
 
-            // Creazione gradiente sfumato moderno sotto la linea del battito
-            fillFormatter = com.github.mikephil.charting.formatter.IFillFormatter { _, _ -> BPMChart.axisLeft.axisMinimum }
-            val gradientShader = LinearGradient(0f, 0f, 0f, BPMChart.height.toFloat(), mainColor, Color.TRANSPARENT, Shader.TileMode.CLAMP)
-            val paint = BPMChart.getPaint(com.github.mikephil.charting.charts.Chart.PAINT_GRID_BACKGROUND)
+            fillFormatter =
+                com.github.mikephil.charting.formatter
+                    .IFillFormatter { _, _ ->
+                        BPMChart.axisLeft.axisMinimum
+                    }
+
+            val gradientShader = LinearGradient(
+                0f,
+                0f,
+                0f,
+                BPMChart.height.toFloat(),
+                mainColor,
+                Color.TRANSPARENT,
+                Shader.TileMode.CLAMP
+            )
+
+            val paint = BPMChart.getPaint(
+                com.github.mikephil.charting.charts
+                    .Chart.PAINT_GRID_BACKGROUND
+            )
+
             paint.shader = gradientShader
 
             fillAlpha = 45
-            setDrawCircles(false) // Disattiviamo i pallini continui per un look più fluido e moderno
+            setDrawCircles(false)
             setDrawValues(false)
-            highLightColor = resources.getColor(R.color.text_primary)
+
+            highLightColor =
+                resources.getColor(R.color.text_primary)
+
             highlightLineWidth = 1f
         }
 
         BPMChart.apply {
             configLineChartStyle(this)
+
             data = LineData(dataSet)
-            xAxis.valueFormatter = TimeAxisFormatter(timestamps)
+
+            xAxis.valueFormatter =
+                TimeAxisFormatter(timestamps)
+
             val maxVisibleX = 13f
+
             setVisibleXRangeMaximum(maxVisibleX)
+
             if (entries.size > maxVisibleX) {
-                moveViewToX(entries.size.toFloat() - maxVisibleX)
+                moveViewToX(
+                    entries.size.toFloat() -
+                            maxVisibleX
+                )
             } else {
                 invalidate()
             }
@@ -374,20 +657,42 @@ class ChartsFragment : Fragment() {
     }
 
     private fun caricaO2() {
-        val listaCompleta = gestoreStatistiche.getO2()
-        if (listaCompleta.isEmpty()) return
+        val completeList =
+            gestoreStatistiche.getO2()
 
-        val ultimo = listaCompleta.last()
-        tvLastO2.text = "${ultimo.value} %"
+        if (completeList.isEmpty()) {
+            return
+        }
 
-        if (cbLockScrollO2.isChecked) return
+        val lastEntry = completeList.last()
 
-        val lista = listaCompleta.takeLast(150)
-        val timestamps = lista.map { it.timestamp }
-        val entries = lista.mapIndexed { index, item -> Entry(index.toFloat(), item.value.toFloat()) }
+        tvLastO2.text =
+            "${lastEntry.value} %"
 
-        val mainColor = resources.getColor(R.color.health_o2)
-        val dataSet = LineDataSet(entries, "SpO2").apply {
+        if (cbLockScrollO2.isChecked) {
+            return
+        }
+
+        val list = completeList.takeLast(150)
+
+        val timestamps =
+            list.map { it.timestamp }
+
+        val entries = list.mapIndexed {
+                index, item ->
+            Entry(
+                index.toFloat(),
+                item.value.toFloat()
+            )
+        }
+
+        val mainColor =
+            resources.getColor(R.color.health_o2)
+
+        val dataSet = LineDataSet(
+            entries,
+            "SpO2"
+        ).apply {
             color = mainColor
             lineWidth = 3f
             mode = LineDataSet.Mode.CUBIC_BEZIER
@@ -395,17 +700,28 @@ class ChartsFragment : Fragment() {
             fillAlpha = 40
             setDrawCircles(false)
             setDrawValues(false)
-            highLightColor = resources.getColor(R.color.text_primary)
+
+            highLightColor =
+                resources.getColor(R.color.text_primary)
         }
 
         O2Chart.apply {
             configLineChartStyle(this)
+
             data = LineData(dataSet)
-            xAxis.valueFormatter = TimeAxisFormatter(timestamps)
+
+            xAxis.valueFormatter =
+                TimeAxisFormatter(timestamps)
+
             val maxVisibleX = 13f
+
             setVisibleXRangeMaximum(maxVisibleX)
+
             if (entries.size > maxVisibleX) {
-                moveViewToX(entries.size.toFloat() - maxVisibleX)
+                moveViewToX(
+                    entries.size.toFloat() -
+                            maxVisibleX
+                )
             } else {
                 invalidate()
             }
@@ -413,48 +729,97 @@ class ChartsFragment : Fragment() {
     }
 
     private fun caricaPressione() {
-        val listaCompleta = gestoreStatistiche.getPressioni()
-        if (listaCompleta.isEmpty()) return
+        val completeList =
+            gestoreStatistiche.getPressioni()
 
-        val ultimo = listaCompleta.last()
-        tvLastPressure.text = "${ultimo.systolic}/${ultimo.diastolic}"
-
-        if (cbLockScrollPressure.isChecked) return
-
-        val lista = listaCompleta.takeLast(150)
-        val timestamps = lista.map { it.timestamp }
-        val entriesSys = lista.mapIndexed { index, item -> Entry(index.toFloat(), item.systolic.toFloat()) }
-        val entriesDia = lista.mapIndexed { index, item -> Entry(index.toFloat(), item.diastolic.toFloat()) }
-
-        val colorSys = resources.getColor(R.color.health_pressure)
-        val colorDia = resources.getColor(R.color.primary_neon)
-
-        val sysSet = LineDataSet(entriesSys, "Systolic").apply {
-            color = colorSys
-            lineWidth = 3f
-            mode = LineDataSet.Mode.CUBIC_BEZIER
-            setDrawCircles(false)
-            setDrawValues(false)
-            highLightColor = resources.getColor(R.color.text_primary)
+        if (completeList.isEmpty()) {
+            return
         }
 
-        val diaSet = LineDataSet(entriesDia, "Diastolic").apply {
-            color = colorDia
+        val lastEntry = completeList.last()
+
+        tvLastPressure.text =
+            "${lastEntry.systolic}/${lastEntry.diastolic}"
+
+        if (cbLockScrollPressure.isChecked) {
+            return
+        }
+
+        val list = completeList.takeLast(150)
+
+        val timestamps =
+            list.map { it.timestamp }
+
+        val systolicEntries =
+            list.mapIndexed { index, item ->
+                Entry(
+                    index.toFloat(),
+                    item.systolic.toFloat()
+                )
+            }
+
+        val diastolicEntries =
+            list.mapIndexed { index, item ->
+                Entry(
+                    index.toFloat(),
+                    item.diastolic.toFloat()
+                )
+            }
+
+        val systolicColor =
+            resources.getColor(R.color.health_pressure)
+
+        val diastolicColor =
+            resources.getColor(R.color.primary_neon)
+
+        val systolicSet = LineDataSet(
+            systolicEntries,
+            "Systolic"
+        ).apply {
+            color = systolicColor
             lineWidth = 3f
             mode = LineDataSet.Mode.CUBIC_BEZIER
             setDrawCircles(false)
             setDrawValues(false)
-            highLightColor = resources.getColor(R.color.text_primary)
+
+            highLightColor =
+                resources.getColor(R.color.text_primary)
+        }
+
+        val diastolicSet = LineDataSet(
+            diastolicEntries,
+            "Diastolic"
+        ).apply {
+            color = diastolicColor
+            lineWidth = 3f
+            mode = LineDataSet.Mode.CUBIC_BEZIER
+            setDrawCircles(false)
+            setDrawValues(false)
+
+            highLightColor =
+                resources.getColor(R.color.text_primary)
         }
 
         pressureChart.apply {
             configLineChartStyle(this)
-            data = LineData(sysSet, diaSet)
-            xAxis.valueFormatter = TimeAxisFormatter(timestamps)
+
+            data = LineData(
+                systolicSet,
+                diastolicSet
+            )
+
+            xAxis.valueFormatter =
+                TimeAxisFormatter(timestamps)
+
             val maxVisibleX = 13f
+
             setVisibleXRangeMaximum(maxVisibleX)
-            if (entriesSys.size > maxVisibleX) {
-                moveViewToX(entriesSys.size.toFloat() - maxVisibleX)
+
+            if (systolicEntries.size > maxVisibleX) {
+                moveViewToX(
+                    systolicEntries.size.toFloat() -
+                            maxVisibleX
+                )
             } else {
                 invalidate()
             }
@@ -462,73 +827,639 @@ class ChartsFragment : Fragment() {
     }
 
     private fun aggiornaGraficiStandard() {
-        val ringManager = SmartRingManager.getActiveInstance()
-        val activeMeasurement = ringManager?.getActiveMeasurementType()
+        val ringManager =
+            SmartRingManager.getActiveInstance()
 
-        if (isBpmFirstLoad || activeMeasurement == "BPM") {
+        val activeMeasurement =
+            ringManager?.getActiveMeasurementType()
+
+        if (
+            isBpmFirstLoad ||
+            activeMeasurement == "BPM"
+        ) {
             caricaBpm()
             isBpmFirstLoad = false
         }
-        if (isO2FirstLoad || activeMeasurement == "O2") {
+
+        if (
+            isO2FirstLoad ||
+            activeMeasurement == "O2"
+        ) {
             caricaO2()
             isO2FirstLoad = false
         }
-        if (isPressureFirstLoad || activeMeasurement == "PRESSURE") {
+
+        if (
+            isPressureFirstLoad ||
+            activeMeasurement == "PRESSURE"
+        ) {
             caricaPressione()
             isPressureFirstLoad = false
         }
 
-        if (isPieChartFirstLoad || MotionSessionManager.isShimmerConnected()){
+        if (
+            isPieChartFirstLoad ||
+            MotionSessionManager.isShimmerConnected()
+        ) {
             refreshPieChart()
             isPieChartFirstLoad = false
         }
     }
 
     private fun aggiornaGraficiDelay() {
-        if (isStepsFirstLoad || MotionSessionManager.isShimmerConnected()){
-            aggiornaPassi()
-            isStepsFirstLoad = false
-        }
+        aggiornaPassi()
         drawPath()
     }
 
-    private fun aggiornaPassi() {
-        val listaCompleta = gestoreStatistiche.getSteps()
-        if (listaCompleta.isEmpty()) return
+    /*
+     * Configurazione pulsanti Giorno, Settimana e Mese.
+     */
+    private fun setupStepsAnalytics() {
+        configureStepsChart()
 
-        tvTotalSteps.text = listaCompleta.last().tot.toString()
+        stepPeriodToggle.check(R.id.btnStepDay)
 
-        val entries = listaCompleta.map {
-            Entry(it.timestamp.toFloat(), it.tot.toFloat())
+        stepPeriodToggle.addOnButtonCheckedListener {
+                _, checkedId, isChecked ->
+
+            if (!isChecked) {
+                return@addOnButtonCheckedListener
+            }
+
+            selectedStepPeriod = when (checkedId) {
+                R.id.btnStepWeek ->
+                    StepPeriod.WEEK
+
+                R.id.btnStepMonth ->
+                    StepPeriod.MONTH
+
+                else ->
+                    StepPeriod.DAY
+            }
+
+            aggiornaPassi()
         }
 
-        val timestamps = listaCompleta.map { it.timestamp }
+        btnPreviousStepPeriod.setOnClickListener {
+            moveSelectedStepPeriod(-1)
+        }
 
-        val dataSet = LineDataSet(entries, "Daily Steps").apply {
-            color = Color.BLUE
-            lineWidth = 3f
-            setDrawCircles(false)
+        btnNextStepPeriod.setOnClickListener {
+            if (!isCurrentStepPeriod()) {
+                moveSelectedStepPeriod(1)
+            }
+        }
+    }
+
+    /*
+     * Stile dell'unico BarChart utilizzato per i tre periodi.
+     */
+    private fun configureStepsChart() {
+        stepsChart.apply {
+            description.isEnabled = false
+            legend.isEnabled = false
+            axisRight.isEnabled = false
+
+            setDrawGridBackground(false)
+            setScaleEnabled(false)
+            setPinchZoom(false)
+            isDoubleTapToZoomEnabled = false
+            isDragEnabled = false
+            setTouchEnabled(true)
+            setFitBars(true)
+
+            setNoDataText(
+                "No step data available"
+            )
+
+            setNoDataTextColor(
+                resources.getColor(
+                    R.color.text_secondary
+                )
+            )
+
+            xAxis.apply {
+                position =
+                    XAxis.XAxisPosition.BOTTOM
+
+                textColor = resources.getColor(
+                    R.color.text_secondary
+                )
+
+                setDrawGridLines(false)
+                setDrawAxisLine(false)
+
+                granularity = 1f
+                isGranularityEnabled = true
+                labelRotationAngle = 0f
+            }
+
+            axisLeft.apply {
+                textColor = resources.getColor(
+                    R.color.text_secondary
+                )
+
+                axisMinimum = 0f
+                setDrawAxisLine(false)
+                setDrawGridLines(true)
+
+                gridColor = resources.getColor(
+                    R.color.surface_variant_dark
+                )
+
+                enableGridDashedLine(
+                    8f,
+                    8f,
+                    0f
+                )
+            }
+        }
+    }
+
+    private fun moveSelectedStepPeriod(
+        direction: Long
+    ) {
+        selectedStepDate =
+            when (selectedStepPeriod) {
+                StepPeriod.DAY ->
+                    selectedStepDate.plusDays(direction)
+
+                StepPeriod.WEEK ->
+                    selectedStepDate.plusWeeks(direction)
+
+                StepPeriod.MONTH ->
+                    selectedStepDate.plusMonths(direction)
+            }
+
+        aggiornaPassi()
+    }
+
+    private fun aggiornaPassi() {
+        if (!::stepsChart.isInitialized) {
+            return
+        }
+
+        val chartData =
+            when (selectedStepPeriod) {
+                StepPeriod.DAY ->
+                    createDayStepData()
+
+                StepPeriod.WEEK ->
+                    createWeekStepData()
+
+                StepPeriod.MONTH ->
+                    createMonthStepData()
+            }
+
+        renderStepChart(chartData)
+        updateStepSummary(chartData)
+        updateStepNavigation()
+    }
+
+    /*
+     * Modalità Giorno: 24 barre, una per ogni ora.
+     */
+    private fun createDayStepData(): StepChartData {
+        val selectedDay =
+            selectedStepDate.toString()
+
+        val hourlyMap = gestoreStatistiche
+            .getPassiOrari(selectedDay)
+            .associateBy { it.hour }
+
+        val values = (0..23).map { hour ->
+            hourlyMap[hour]?.steps ?: 0
+        }
+
+        val labels = (0..23).map { hour ->
+            String.format(
+                stepLocale,
+                "%02d:00",
+                hour
+            )
+        }
+
+        val savedDailyTotal =
+            gestoreStatistiche
+                .getPassiGiornalieri(
+                    selectedDay,
+                    selectedDay
+                )
+                .firstOrNull()
+                ?.steps
+
+        val dateFormatter =
+            DateTimeFormatter.ofPattern(
+                "d MMMM yyyy",
+                stepLocale
+            )
+
+        return StepChartData(
+            values = values,
+            labels = labels,
+            totalSteps =
+                savedDailyTotal ?: values.sum(),
+            daysForAverage = 1,
+            periodLabel =
+                selectedStepDate.format(dateFormatter)
+        )
+    }
+
+    /*
+     * Modalità Settimana: da lunedì a domenica.
+     */
+    private fun createWeekStepData(): StepChartData {
+        val firstDay =
+            startOfWeek(selectedStepDate)
+
+        val lastDay =
+            firstDay.plusDays(6)
+
+        val savedDays =
+            gestoreStatistiche
+                .getPassiGiornalieri(
+                    firstDay.toString(),
+                    lastDay.toString()
+                )
+                .associateBy { it.day }
+
+        val dates = (0..6).map { offset ->
+            firstDay.plusDays(
+                offset.toLong()
+            )
+        }
+
+        val values = dates.map { date ->
+            savedDays[date.toString()]
+                ?.steps
+                ?: 0
+        }
+
+        val labels = dates.map { date ->
+            date.dayOfWeek
+                .getDisplayName(
+                    TextStyle.SHORT,
+                    stepLocale
+                )
+                .replace(".", "")
+                .replaceFirstChar { character ->
+                    character.uppercase(stepLocale)
+                }
+        }
+
+        val shortFormatter =
+            DateTimeFormatter.ofPattern(
+                "d MMM",
+                stepLocale
+            )
+
+        val longFormatter =
+            DateTimeFormatter.ofPattern(
+                "d MMM yyyy",
+                stepLocale
+            )
+
+        return StepChartData(
+            values = values,
+            labels = labels,
+            totalSteps = values.sum(),
+            daysForAverage =
+                calculateDaysForAverage(
+                    firstDay,
+                    lastDay
+                ),
+            periodLabel =
+                "${firstDay.format(shortFormatter)} - " +
+                        lastDay.format(longFormatter)
+        )
+    }
+
+    /*
+     * Modalità Mese: una barra per ogni giorno.
+     */
+    private fun createMonthStepData(): StepChartData {
+        val firstDay =
+            selectedStepDate.withDayOfMonth(1)
+
+        val lastDay =
+            selectedStepDate.withDayOfMonth(
+                selectedStepDate.lengthOfMonth()
+            )
+
+        val savedDays =
+            gestoreStatistiche
+                .getPassiGiornalieri(
+                    firstDay.toString(),
+                    lastDay.toString()
+                )
+                .associateBy { it.day }
+
+        val dates =
+            (0 until selectedStepDate.lengthOfMonth())
+                .map { offset ->
+                    firstDay.plusDays(
+                        offset.toLong()
+                    )
+                }
+
+        val values = dates.map { date ->
+            savedDays[date.toString()]
+                ?.steps
+                ?: 0
+        }
+
+        val labels = dates.map { date ->
+            date.dayOfMonth.toString()
+        }
+
+        val monthLabel =
+            firstDay.format(
+                DateTimeFormatter.ofPattern(
+                    "MMMM yyyy",
+                    stepLocale
+                )
+            ).replaceFirstChar { character ->
+                character.uppercase(stepLocale)
+            }
+
+        return StepChartData(
+            values = values,
+            labels = labels,
+            totalSteps = values.sum(),
+            daysForAverage =
+                calculateDaysForAverage(
+                    firstDay,
+                    lastDay
+                ),
+            periodLabel = monthLabel
+        )
+    }
+
+    private fun renderStepChart(
+        chartData: StepChartData
+    ) {
+        val entries =
+            chartData.values.mapIndexed {
+                    index, steps ->
+
+                BarEntry(
+                    index.toFloat(),
+                    steps.toFloat()
+                )
+            }
+
+        val dataSet = BarDataSet(
+            entries,
+            "Steps"
+        ).apply {
+            color = resources.getColor(
+                R.color.health_shimmer
+            )
+
+            highLightColor = resources.getColor(
+                R.color.primary_neon
+            )
+
+            highLightAlpha = 100
             setDrawValues(false)
         }
 
-        val lineData = LineData(dataSet)
-        stepsChart.data = lineData
-        stepsChart.xAxis.valueFormatter = TimeAxisFormatter(timestamps)
-        stepsChart.invalidate()
+        val barData = BarData(dataSet).apply {
+            barWidth =
+                when (selectedStepPeriod) {
+                    StepPeriod.DAY -> 0.58f
+                    StepPeriod.WEEK -> 0.52f
+                    StepPeriod.MONTH -> 0.55f
+                }
+        }
+
+        stepsChart.xAxis.valueFormatter =
+            object : ValueFormatter() {
+
+                override fun getAxisLabel(
+                    value: Float,
+                    axis: AxisBase?
+                ): String {
+                    val index =
+                        value.roundToInt()
+
+                    if (
+                        index !in
+                        chartData.labels.indices
+                    ) {
+                        return ""
+                    }
+
+                    val showLabel =
+                        when (selectedStepPeriod) {
+                            StepPeriod.DAY ->
+                                index % 6 == 0 ||
+                                        index ==
+                                        chartData.labels.lastIndex
+
+                            StepPeriod.WEEK ->
+                                true
+
+                            StepPeriod.MONTH ->
+                                index % 2 == 0 ||
+                                        index ==
+                                        chartData.labels.lastIndex
+                        }
+
+                    return if (showLabel) {
+                        chartData.labels[index]
+                    } else {
+                        ""
+                    }
+                }
+            }
+
+        val labelCount =
+            when (selectedStepPeriod) {
+                StepPeriod.DAY -> 5
+                StepPeriod.WEEK -> 7
+                StepPeriod.MONTH -> 8
+            }
+
+        stepsChart.xAxis.setLabelCount(
+            labelCount,
+            false
+        )
+
+        stepsChart.apply {
+            data = barData
+            axisLeft.axisMinimum = 0f
+            fitScreen()
+            notifyDataSetChanged()
+            animateY(350)
+            invalidate()
+        }
+    }
+
+    /*
+     * Aggiornamento dei riepiloghi sotto il grafico.
+     */
+    private fun updateStepSummary(
+        chartData: StepChartData
+    ) {
+        val totalSteps =
+            chartData.totalSteps
+
+        val averageSteps = (
+                totalSteps.toDouble() /
+                        chartData.daysForAverage
+                            .coerceAtLeast(1)
+                ).roundToInt()
+
+        val completionPercentage = (
+                averageSteps.toDouble() /
+                        dailyStepGoal.toDouble() *
+                        100.0
+                ).roundToInt()
+            .coerceIn(0, 100)
+
+        val distanceKm =
+            totalSteps * stepLengthKm
+
+        val calories =
+            totalSteps * caloriesPerStep
+
+        val integerFormatter =
+            NumberFormat.getIntegerInstance(
+                stepLocale
+            )
+
+        tvTotalSteps.text =
+            integerFormatter.format(totalSteps)
+
+        tvAverageSteps.text =
+            integerFormatter.format(averageSteps)
+
+        tvStepCompletion.text =
+            "$completionPercentage%"
+
+        tvStepDistance.text =
+            String.format(
+                stepLocale,
+                "%.2f km",
+                distanceKm
+            )
+
+        tvStepCalories.text =
+            String.format(
+                stepLocale,
+                "%.1f kcal",
+                calories
+            )
+
+        tvStepPeriodLabel.text =
+            chartData.periodLabel
+    }
+
+    private fun calculateDaysForAverage(
+        firstDay: LocalDate,
+        lastDay: LocalDate
+    ): Int {
+        val today = LocalDate.now()
+
+        val effectiveLastDay =
+            if (lastDay.isAfter(today)) {
+                today
+            } else {
+                lastDay
+            }
+
+        if (effectiveLastDay.isBefore(firstDay)) {
+            return 1
+        }
+
+        return (
+                ChronoUnit.DAYS.between(
+                    firstDay,
+                    effectiveLastDay
+                ) + 1
+                ).toInt()
+            .coerceAtLeast(1)
+    }
+
+    private fun startOfWeek(
+        date: LocalDate
+    ): LocalDate {
+        return date.with(
+            TemporalAdjusters.previousOrSame(
+                DayOfWeek.MONDAY
+            )
+        )
+    }
+
+    private fun isCurrentStepPeriod(): Boolean {
+        val today = LocalDate.now()
+
+        return when (selectedStepPeriod) {
+            StepPeriod.DAY ->
+                selectedStepDate == today
+
+            StepPeriod.WEEK ->
+                startOfWeek(selectedStepDate) ==
+                        startOfWeek(today)
+
+            StepPeriod.MONTH ->
+                selectedStepDate.year ==
+                        today.year &&
+                        selectedStepDate.month ==
+                        today.month
+        }
+    }
+
+    /*
+     * Impedisce di navigare oltre il giorno corrente.
+     */
+    private fun updateStepNavigation() {
+        val canMoveForward =
+            !isCurrentStepPeriod()
+
+        btnNextStepPeriod.isEnabled =
+            canMoveForward
+
+        btnNextStepPeriod.alpha =
+            if (canMoveForward) {
+                1f
+            } else {
+                0.35f
+            }
     }
 }
 
-class CustomMarkerView(context: Context, layoutResource: Int) : MarkerView(context, layoutResource) {
-    private val tvMarkerValue: TextView = findViewById(R.id.tvMarkerValue)
+class CustomMarkerView(
+    context: Context,
+    layoutResource: Int
+) : MarkerView(
+    context,
+    layoutResource
+) {
 
-    override fun refreshContent(e: Entry?, highlight: Highlight?) {
-        if (e != null) {
-            tvMarkerValue.text = e.y.toInt().toString()
+    private val tvMarkerValue: TextView =
+        findViewById(R.id.tvMarkerValue)
+
+    override fun refreshContent(
+        entry: Entry?,
+        highlight: Highlight?
+    ) {
+        if (entry != null) {
+            tvMarkerValue.text =
+                entry.y.toInt().toString()
         }
-        super.refreshContent(e, highlight)
+
+        super.refreshContent(
+            entry,
+            highlight
+        )
     }
 
     override fun getOffset(): MPPointF {
-        return MPPointF((-(width / 2)).toFloat(), (-height).toFloat())
+        return MPPointF(
+            (-(width / 2)).toFloat(),
+            (-height).toFloat()
+        )
     }
 }

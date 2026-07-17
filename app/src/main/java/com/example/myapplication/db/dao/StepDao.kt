@@ -48,8 +48,17 @@ class StepDao(private val context: Context) {
 
     fun getLastRecord(): StepEntry? {
         val db = getHelper().readableDatabase
-        val cursor = db.rawQuery("SELECT * FROM positions ORDER BY timestamp DESC LIMIT 1", null)
+        val startOfToday = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
 
+        val cursor = db.rawQuery(
+            "SELECT * FROM steps WHERE timestamp >= ? ORDER BY timestamp ASC",
+            arrayOf(startOfToday.toString())
+        )
         var ret: StepEntry? = null
         if (cursor.moveToFirst())
             ret = StepEntry(

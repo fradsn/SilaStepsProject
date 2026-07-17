@@ -182,6 +182,9 @@ class ProfileFragment : Fragment(), SmartRingManager.SmartRingListener, MotionSe
         }
 
         view.findViewById<ImageButton>(R.id.logout_button)?.setOnClickListener {
+
+
+
             auth.signOut()
 
             // Stop all continuous active foreground system services upon logging out
