@@ -35,7 +35,7 @@ class UserProfileActivity : AppCompatActivity() {
             true
         }
     }
-
+//ok
     private fun cambiaSchermata(fragment: Fragment, tag: String) {
         supportFragmentManager.beginTransaction()
             .replace(R.id.frameLayout, fragment, tag)
