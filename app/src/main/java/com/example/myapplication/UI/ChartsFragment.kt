@@ -39,7 +39,6 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
 import org.osmdroid.tileprovider.tilesource.XYTileSource
-import java.io.File
 
 class ChartsFragment : Fragment() {
 
@@ -58,11 +57,11 @@ class ChartsFragment : Fragment() {
     private lateinit var cbLockScrollBpm: CheckBox
     private lateinit var cbLockScrollO2: CheckBox
     private lateinit var cbLockScrollPressure: CheckBox
+    private lateinit var cbLockScrollSteps: CheckBox // Nuova Checkbox Aggiunta
     private lateinit var cbEnableHistory: CheckBox
 
     private val activityLabels = listOf("Walking", "Jogging", "Sitting", "Standing")
 
-    // Mappatura dinamica basata sulla nuova tavolozza dei colori coerenti
     private val activityColorMap by lazy {
         mapOf(
             "Walking" to resources.getColor(R.color.primary_neon),
@@ -98,11 +97,7 @@ class ChartsFragment : Fragment() {
         super.onCreate(savedInstanceState)
         val ctx = requireContext()
         gestoreStatistiche = GestoreStatistiche.getInstance(ctx)
-
-        // 1) Inizializza OSMDroid PRIMA del layout
         Configuration.getInstance().load(ctx, ctx.getSharedPreferences("osmdroid", MODE_PRIVATE))
-
-        // 2) Imposta un user-agent valido (fondamentale!)
         Configuration.getInstance().userAgentValue = "ParkApp/1.0"
     }
 
@@ -140,38 +135,39 @@ class ChartsFragment : Fragment() {
 
         stepsChart = view.findViewById(R.id.StepsChart)
         tvTotalSteps = view.findViewById(R.id.tvTotalSteps)
+        cbLockScrollSteps = view.findViewById(R.id.cbLockScrollSteps) // Binding Nuova Checkbox
 
         val customMarker = CustomMarkerView(requireContext(), R.layout.custom_marker_view)
         BPMChart.marker = customMarker
         O2Chart.marker = customMarker
         pressureChart.marker = customMarker
+        stepsChart.marker = customMarker // Assegnazione marcatore anche agli step per consistenza UI
 
         cbLockScrollBpm.setOnCheckedChangeListener { _, isChecked -> if (!isChecked) caricaBpm() }
         cbLockScrollO2.setOnCheckedChangeListener { _, isChecked -> if (!isChecked) caricaO2() }
         cbLockScrollPressure.setOnCheckedChangeListener { _, isChecked -> if (!isChecked) caricaPressione() }
+        cbLockScrollSteps.setOnCheckedChangeListener { _, isChecked -> if (!isChecked) aggiornaPassi() }
         cbEnableHistory.setOnCheckedChangeListener { _, isChecked -> drawPath() }
-
 
         isBpmFirstLoad = true
         isO2FirstLoad = true
         isPressureFirstLoad = true
+        isStepsFirstLoad = true
 
         aggiornaGraficiStandard()
         aggiornaGraficiDelay()
         pollHandler.post(pollRunnableStandard)
-        pollHandler.post ( pollRunnableDelay )
+        pollHandler.post(pollRunnableDelay)
     }
 
     private fun drawPath() {
         map.overlayManager.clear()
-
         val positions = gestoreStatistiche.getPositions().sortedBy { it.timestamp }
         if (positions.isEmpty()) {
             map.invalidate()
             return
         }
 
-        // Converti in GeoPoint
         var geoPoints: MutableList<GeoPoint> = mutableListOf()
         if (!cbEnableHistory.isChecked){
             val attuale = positions.last()
@@ -180,7 +176,6 @@ class ChartsFragment : Fragment() {
             geoPoints = positions.map { GeoPoint(it.latitude, it.longitude) }.toMutableList()
         }
 
-        // Disegna la polyline
         val polyline = Polyline().apply {
             outlinePaint.color = Color.BLUE
             outlinePaint.strokeWidth = 5f
@@ -188,7 +183,6 @@ class ChartsFragment : Fragment() {
         }
         map.overlayManager.add(polyline)
 
-        // Aggiungi piccoli punti per ogni posizione
         geoPoints.forEach { point ->
             val marker = Marker(map).apply {
                 position = point
@@ -198,11 +192,8 @@ class ChartsFragment : Fragment() {
             map.overlayManager.add(marker)
         }
 
-        // Calcolo bounding box originale
         val bounds = BoundingBox.fromGeoPoints(geoPoints)
-
-        // Padding per avere bordi bianchi
-        val padding = 0.0002   // puoi aumentare o diminuire
+        val padding = 0.0002
         val paddedBounds = BoundingBox(
             bounds.latNorth + padding,
             bounds.lonEast + padding,
@@ -210,15 +201,11 @@ class ChartsFragment : Fragment() {
             bounds.lonWest - padding
         )
 
-        // Zoom automatico sul percorso
         map.zoomToBoundingBox(paddedBounds, true)
-
-        // Limite massimo allo zoom
         val maxZoom = 18.0
         if (map.zoomLevelDouble > maxZoom) {
             map.controller.setZoom(maxZoom)
         }
-
         map.invalidate()
     }
 
@@ -232,15 +219,11 @@ class ChartsFragment : Fragment() {
             ),
             "© OpenStreetMap contributors, © CARTO"
         )
-
         map.setTileSource(cartoLightTileSource)
-
         map.setMultiTouchControls(false)
         map.isClickable = false
         map.isLongClickable = false
-
-        val controller = map.controller
-        controller.setZoom(15.0)
+        map.controller.setZoom(15.0)
     }
 
     override fun onPause() {
@@ -282,9 +265,7 @@ class ChartsFragment : Fragment() {
             if (count > 0) PieEntry(count.toFloat(), label) else null
         }
 
-        val colors = entries.mapNotNull { entry ->
-            activityColorMap[entry.label]
-        }
+        val colors = entries.mapNotNull { entry -> activityColorMap[entry.label] }
 
         val dataSet = PieDataSet(entries, "").apply {
             this.colors = colors
@@ -296,7 +277,6 @@ class ChartsFragment : Fragment() {
         val data = PieData(dataSet).apply {
             setValueFormatter(PercentFormatter(pieChart))
         }
-
         pieChart.data = data
         pieChart.centerText = "Activities"
         pieChart.invalidate()
@@ -322,7 +302,7 @@ class ChartsFragment : Fragment() {
         chart.xAxis.apply {
             position = XAxis.XAxisPosition.BOTTOM
             textColor = resources.getColor(R.color.text_secondary)
-            setDrawGridLines(false) // Rimozione griglia verticale pesante
+            setDrawGridLines(false)
             setDrawAxisLine(false)
             granularity = 1f
             labelRotationAngle = -45f
@@ -332,7 +312,7 @@ class ChartsFragment : Fragment() {
         chart.axisLeft.apply {
             textColor = resources.getColor(R.color.text_secondary)
             setDrawGridLines(true)
-            gridColor = resources.getColor(R.color.surface_variant_dark) // Griglia orizzontale soft e soffusa
+            gridColor = resources.getColor(R.color.surface_variant_dark)
             setDrawAxisLine(false)
         }
     }
@@ -357,14 +337,13 @@ class ChartsFragment : Fragment() {
             mode = LineDataSet.Mode.CUBIC_BEZIER
             setDrawFilled(true)
 
-            // Creazione gradiente sfumato moderno sotto la linea del battito
             fillFormatter = com.github.mikephil.charting.formatter.IFillFormatter { _, _ -> BPMChart.axisLeft.axisMinimum }
             val gradientShader = LinearGradient(0f, 0f, 0f, BPMChart.height.toFloat(), mainColor, Color.TRANSPARENT, Shader.TileMode.CLAMP)
             val paint = BPMChart.getPaint(com.github.mikephil.charting.charts.Chart.PAINT_GRID_BACKGROUND)
             paint.shader = gradientShader
 
             fillAlpha = 45
-            setDrawCircles(false) // Disattiviamo i pallini continui per un look più fluido e moderno
+            setDrawCircles(false)
             setDrawValues(false)
             highLightColor = resources.getColor(R.color.text_primary)
             highlightLineWidth = 1f
@@ -503,29 +482,59 @@ class ChartsFragment : Fragment() {
         drawPath()
     }
 
+    // =====================================================================================
+    // METODO CORRETTO E ALLINEATO GRAFICAMENTE AGLI ALTRI BIOMETRICI
+    // =====================================================================================
     private fun aggiornaPassi() {
         val listaCompleta = gestoreStatistiche.getSteps()
         if (listaCompleta.isEmpty()) return
 
-        tvTotalSteps.text = listaCompleta.last().tot.toString()
+        val ultimo = listaCompleta.last()
+        tvTotalSteps.text = ultimo.tot.toString()
 
-        val entries = listaCompleta.map {
-            Entry(it.timestamp.toFloat(), it.tot.toFloat())
-        }
+        // 1) Rispetto del blocco dello scrolling automatico coerente con gli altri grafici
+        if (cbLockScrollSteps.isChecked) return
 
-        val timestamps = listaCompleta.map { it.timestamp }
+        // 2) Ottimizzazione del carico visivo (ultimi 150 record)
+        val lista = listaCompleta.takeLast(150)
+        val timestamps = lista.map { it.timestamp }
 
+        // 3) Correzione Asse X: Uso degli indici sequenziali allineati con TimeAxisFormatter
+        val entries = lista.mapIndexed { index, item -> Entry(index.toFloat(), item.tot.toFloat()) }
+
+        // 4) Styling moderno: Linea fluida, gradient shading inferiore e palette colori coerente
+        val mainColor = resources.getColor(R.color.health_bpm) // Sincronizzato con il colore del testo dei passi
         val dataSet = LineDataSet(entries, "Daily Steps").apply {
-            color = Color.BLUE
+            color = mainColor
             lineWidth = 3f
+            mode = LineDataSet.Mode.CUBIC_BEZIER // Curve Bezier morbide ed elastiche
+            setDrawFilled(true)
+
+            fillFormatter = com.github.mikephil.charting.formatter.IFillFormatter { _, _ -> stepsChart.axisLeft.axisMinimum }
+            val gradientShader = LinearGradient(0f, 0f, 0f, stepsChart.height.toFloat(), mainColor, Color.TRANSPARENT, Shader.TileMode.CLAMP)
+            val paint = stepsChart.getPaint(com.github.mikephil.charting.charts.Chart.PAINT_GRID_BACKGROUND)
+            paint.shader = gradientShader
+
+            fillAlpha = 45
             setDrawCircles(false)
             setDrawValues(false)
+            highLightColor = resources.getColor(R.color.text_primary)
+            highlightLineWidth = 1f
         }
 
-        val lineData = LineData(dataSet)
-        stepsChart.data = lineData
-        stepsChart.xAxis.valueFormatter = TimeAxisFormatter(timestamps)
-        stepsChart.invalidate()
+        // 5) Rendering del viewport e della griglia tramite gli stili comuni dell'applicazione
+        stepsChart.apply {
+            configLineChartStyle(this)
+            data = LineData(dataSet)
+            xAxis.valueFormatter = TimeAxisFormatter(timestamps)
+            val maxVisibleX = 13f
+            setVisibleXRangeMaximum(maxVisibleX)
+            if (entries.size > maxVisibleX) {
+                moveViewToX(entries.size.toFloat() - maxVisibleX)
+            } else {
+                invalidate()
+            }
+        }
     }
 }
 

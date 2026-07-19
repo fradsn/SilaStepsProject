@@ -8,6 +8,7 @@ import com.example.myapplication.Motion.pipeline.MotionPipeline
 import com.example.myapplication.Motion.tflite.LocalPredictionResult
 import com.example.myapplication.BT.Shimmer.ShimmerClassicManager
 import com.example.myapplication.db.GestoreStatistiche
+import com.example.myapplication.network.IntercettaFinestrePredizione
 import java.lang.ref.WeakReference
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -31,14 +32,12 @@ object MotionSessionManager : MotionPipeline.Listener {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val observers = CopyOnWriteArrayList<WeakReference<Observer>>()
 
-    // MODIFICA CRUCIALE: Rimosso completamente il campo 'appContext: Context?' statico.
-    // Il ciclo di vita del contesto viene gestito ora internamente da MotionPipeline e GestoreStatistiche.
     private var motionPipeline: MotionPipeline? = null
     private var shimmerManager: ShimmerClassicManager? = null
 
     @Volatile
     private var state = MotionUiState()
-    private var gestoreStatistiche: GestoreStatistiche? = null
+    private var gestoreStatistiche: GestoreStatistiche? = null // Mantiene la consistenza di GestoreStatistiche
 
     fun initialize(context: Context) {
         val safeContext = context.applicationContext
@@ -74,7 +73,6 @@ object MotionSessionManager : MotionPipeline.Listener {
     }
 
     fun connectToShimmer(context: Context, macAddress: String) {
-        // Passiamo il contesto all'inizializzatore locale locale senza salvarlo in variabili statiche
         val safeContext = context.applicationContext
         initialize(safeContext)
 
@@ -110,6 +108,9 @@ object MotionSessionManager : MotionPipeline.Listener {
         motionPipeline?.reset()
         shimmerManager = null
 
+        // Sincronizza lo sgancio dell'hardware anche con l'intercettore RAW
+        IntercettaFinestrePredizione.getInstance().onShimmerDisconnected()
+
         updateState {
             copy(
                 shimmerConnected = false,
@@ -132,6 +133,7 @@ object MotionSessionManager : MotionPipeline.Listener {
                 lastError = null
             )
         }
+        IntercettaFinestrePredizione.getInstance().onShimmerConnected()
         shimmerManager?.setupShimmer()
     }
 
@@ -140,6 +142,9 @@ object MotionSessionManager : MotionPipeline.Listener {
         motionPipeline?.reset()
         shimmerManager?.updateListener(null)
         shimmerManager = null
+
+        // Pulisce e notifica l'intercettore RAW della disconnessione
+        IntercettaFinestrePredizione.getInstance().onShimmerDisconnected()
 
         updateState {
             copy(
@@ -174,16 +179,24 @@ object MotionSessionManager : MotionPipeline.Listener {
             )
         }
 
+        IntercettaFinestrePredizione.getInstance().onShimmerReady()
         shimmerManager?.startStreaming()
     }
 
-    override fun onWindowCreated(window: AccelWindow) {}
+    // =====================================================================================
+    // SOLUZIONE DEL BUG: COUPLING FLUSH VERSO L'INTERCETTORE DI MEMORIA RAM
+    // =====================================================================================
+    override fun onWindowCreated(window: AccelWindow) {
+        // Intercetta la matrice e la inoltra istantaneamente al modulo cloud in background
+        IntercettaFinestrePredizione.getInstance().onWindowCreated(window)
+    }
 
     override fun onPredictionReceived(result: LocalPredictionResult) {
         val activity = result.prediction
         val confidence = (result.confidence * 100).toInt().coerceIn(0, 100)
 
         gestoreStatistiche?.salvaPredizione(activity, confidence)
+        IntercettaFinestrePredizione.getInstance().onPredictionReceived(result)
 
         updateState {
             copy(
@@ -195,6 +208,7 @@ object MotionSessionManager : MotionPipeline.Listener {
     }
 
     override fun onMotionError(message: String) {
+        IntercettaFinestrePredizione.getInstance().onMotionError(message)
         updateState {
             copy(lastError = message)
         }
