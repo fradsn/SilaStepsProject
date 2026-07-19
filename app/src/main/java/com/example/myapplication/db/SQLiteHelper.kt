@@ -79,6 +79,7 @@ class SQLiteHelper(context: Context, userId: String) :
         db.execSQL("DROP TABLE IF EXISTS o2")
         db.execSQL("DROP TABLE IF EXISTS prediction")
         db.execSQL("DROP TABLE IF EXISTS position")
+        db.execSQL("DROP TABLE IF EXISTS steps")
         onCreate(db)
     }
 }

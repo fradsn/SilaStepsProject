@@ -49,6 +49,8 @@ class GestoreStatistiche private constructor(context: Context) {
             val lastRecord = stepDao.getLastRecord()
             if (lastRecord != null)
                 salvaPassi(lastRecord.tot + 2)
+            else
+                salvaPassi(2)
         }
     }
 

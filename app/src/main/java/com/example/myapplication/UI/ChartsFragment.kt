@@ -33,12 +33,13 @@ import com.github.mikephil.charting.formatter.PercentFormatter
 import com.github.mikephil.charting.highlight.Highlight
 import com.github.mikephil.charting.utils.MPPointF
 import org.osmdroid.config.Configuration
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
+import org.osmdroid.tileprovider.tilesource.XYTileSource
+import java.io.File
 
 class ChartsFragment : Fragment() {
 
@@ -102,7 +103,7 @@ class ChartsFragment : Fragment() {
         Configuration.getInstance().load(ctx, ctx.getSharedPreferences("osmdroid", MODE_PRIVATE))
 
         // 2) Imposta un user-agent valido (fondamentale!)
-        Configuration.getInstance().userAgentValue = ctx.packageName
+        Configuration.getInstance().userAgentValue = "ParkApp/1.0"
     }
 
     override fun onCreateView(
@@ -222,7 +223,17 @@ class ChartsFragment : Fragment() {
     }
 
     private fun setupMap() {
-        map.setTileSource(TileSourceFactory.MAPNIK)
+        val cartoLightTileSource = XYTileSource(
+            "CartoLight", 0, 20, 256, ".png",
+            arrayOf(
+                "https://a.basemaps.cartocdn.com/light_all/",
+                "https://b.basemaps.cartocdn.com/light_all/",
+                "https://c.basemaps.cartocdn.com/light_all/"
+            ),
+            "© OpenStreetMap contributors, © CARTO"
+        )
+
+        map.setTileSource(cartoLightTileSource)
 
         map.setMultiTouchControls(false)
         map.isClickable = false

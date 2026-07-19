@@ -48,7 +48,7 @@ class StepDao(private val context: Context) {
 
     fun getLastRecord(): StepEntry? {
         val db = getHelper().readableDatabase
-        val cursor = db.rawQuery("SELECT * FROM positions ORDER BY timestamp DESC LIMIT 1", null)
+        val cursor = db.rawQuery("SELECT * FROM steps ORDER BY timestamp DESC LIMIT 1", null)
 
         var ret: StepEntry? = null
         if (cursor.moveToFirst())
