@@ -45,7 +45,7 @@ class AwsSyncService : Service() {
         private const val NOTIFICATION_ID = 2005
         private const val CHANNEL_ID = "aws_sync_channel"
 
-        private const val SYNC_INTERVAL_MS =  60 * 1000L
+        private const val SYNC_INTERVAL_MS = 5* 60 * 1000L
 
         // Costanti di validità biologica mutate da HealthMonitoringService
         private const val VITAL_VALIDITY_WINDOW_BPM = 60 * 1000L       // Tolleranza 1 minuto
